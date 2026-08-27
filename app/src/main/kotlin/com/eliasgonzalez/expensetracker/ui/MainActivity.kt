@@ -148,6 +148,7 @@ private fun isInCurrentMonth(epochMillis: Long): Boolean {
 
 @Composable
 private fun DashboardScreen() {
+    val context = LocalContext.current
     val expenses by ServiceLocator.get().expenseRepository.expenses.collectAsState()
     val thisMonth = expenses.filter { isInCurrentMonth(it.occurredAt) }
     val total = thisMonth.sumOf { it.amount }
@@ -156,10 +157,23 @@ private fun DashboardScreen() {
             " " + YearMonth.now().year
     }
 
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val json = ServiceLocator.get().exportBackup()
+        context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+        android.widget.Toast.makeText(context, "Backup exportado", android.widget.Toast.LENGTH_SHORT).show()
+    }
+
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(monthLabel, style = MaterialTheme.typography.labelMedium)
         Text("Gastado", style = MaterialTheme.typography.bodyMedium)
         Text("₲%,d".format(total), style = MaterialTheme.typography.headlineMedium)
+        Button(onClick = {
+            val fileName = "expense-tracker-backup-${System.currentTimeMillis()}.json"
+            exportLauncher.launch(fileName)
+        }) { Text("Exportar backup (JSON)") }
         Text("Últimos gastos", style = MaterialTheme.typography.titleMedium)
         LazyColumn {
             items(expenses.take(20)) { expense -> ExpenseRow(expense) }

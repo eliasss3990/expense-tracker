@@ -11,6 +11,7 @@ import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 import com.eliasgonzalez.expensetracker.domain.usecase.ConfirmCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.CreateCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.EditCandidate
+import com.eliasgonzalez.expensetracker.domain.usecase.ExportBackup
 import com.eliasgonzalez.expensetracker.domain.usecase.RegisterExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.RejectCandidate
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +43,7 @@ class AppContainer(context: Context) {
     val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository)
     val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository)
     val rejectCandidate = RejectCandidate(candidateRepository, activityRepository)
+    val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository)
 
     init {
         appScope.launch {
