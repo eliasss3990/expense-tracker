@@ -3,9 +3,14 @@ package com.eliasgonzalez.expensetracker.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -20,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
+import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -44,7 +50,7 @@ class QuickAddActivity : ComponentActivity() {
                 Surface {
                     QuickAddScreen(
                         editing = editingCandidate,
-                        onSave = { amount, merchant -> finish() },
+                        onSave = { finish() },
                     )
                 }
             }
@@ -55,10 +61,13 @@ class QuickAddActivity : ComponentActivity() {
 @Composable
 private fun QuickAddScreen(
     editing: ExpenseCandidate?,
-    onSave: (amount: Long, merchant: String) -> Unit,
+    onSave: () -> Unit,
 ) {
     var amountText by remember { mutableStateOf(editing?.amount?.toString().orEmpty()) }
     var merchantText by remember { mutableStateOf(editing?.merchant.orEmpty()) }
+    var category by remember {
+        mutableStateOf(Category.fromId(editing?.categorySuggestion ?: Category.OTHER.id))
+    }
     val scope = rememberCoroutineScope()
 
     Column(Modifier.padding(24.dp)) {
@@ -75,6 +84,19 @@ private fun QuickAddScreen(
             label = { Text("Comercio") },
             modifier = Modifier.padding(top = 12.dp),
         )
+        Text("Categoría", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 16.dp))
+        Row(
+            Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Category.entries.forEach { option ->
+                FilterChip(
+                    selected = option == category,
+                    onClick = { category = option },
+                    label = { Text(option.label) },
+                )
+            }
+        }
         Button(
             onClick = {
                 val amount = amountText.toLongOrNull() ?: 0
@@ -82,23 +104,24 @@ private fun QuickAddScreen(
                 scope.launch {
                     val container = ServiceLocator.get()
                     if (editing != null) {
-                        container.editCandidate(editing.id, amount, merchantText)
+                        container.editCandidate(editing.id, amount, merchantText, category.id)
                     } else {
                         val now = System.currentTimeMillis()
                         container.registerExpense(
                             Expense(
                                 amount = amount,
                                 merchant = merchantText,
+                                categoryId = category.id,
                                 occurredAt = now,
                                 createdAt = now,
                                 source = ExpenseSource.QUICK_TILE,
                             )
                         )
                     }
-                    onSave(amount, merchantText)
+                    onSave()
                 }
             },
-            modifier = Modifier.padding(top = 16.dp),
+            modifier = Modifier.padding(top = 20.dp),
         ) { Text("Guardar") }
     }
 }

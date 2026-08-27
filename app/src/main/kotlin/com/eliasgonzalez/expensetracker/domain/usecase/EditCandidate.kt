@@ -12,17 +12,23 @@ class EditCandidate(
     private val registerExpense: RegisterExpense,
     private val activity: ActivityRepository,
 ) {
-    suspend operator fun invoke(candidateId: Long, amount: Long, merchant: String): Long? {
+    suspend operator fun invoke(
+        candidateId: Long,
+        amount: Long,
+        merchant: String,
+        categoryId: String = "",
+    ): Long? {
         val candidate = candidates.findById(candidateId) ?: return null
         if (candidate.status != CandidateStatus.PENDING) return null
 
         val now = System.currentTimeMillis()
+        val finalCategoryId = categoryId.ifBlank { candidate.categorySuggestion }
         val expenseId = registerExpense(
             Expense(
                 amount = amount,
                 currency = candidate.currency,
                 merchant = merchant,
-                categoryId = candidate.categorySuggestion,
+                categoryId = finalCategoryId,
                 occurredAt = candidate.occurredAt,
                 createdAt = now,
                 source = candidate.sourceType,
@@ -30,7 +36,12 @@ class EditCandidate(
             )
         )
         candidates.update(
-            candidate.copy(status = CandidateStatus.EDITED, amount = amount, merchant = merchant)
+            candidate.copy(
+                status = CandidateStatus.EDITED,
+                amount = amount,
+                merchant = merchant,
+                categorySuggestion = finalCategoryId,
+            )
         )
         activity.record(
             ActivityEntry(
