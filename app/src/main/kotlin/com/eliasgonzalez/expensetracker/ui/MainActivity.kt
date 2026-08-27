@@ -41,6 +41,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
+import com.eliasgonzalez.expensetracker.domain.model.ActivityType
+import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
@@ -49,6 +52,7 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -103,10 +107,12 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Dashboard") })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Bandeja") })
+                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Actividad") })
             }
             when (tab) {
                 0 -> DashboardScreen()
                 1 -> TrayScreen()
+                2 -> ActivityScreen()
             }
         }
     }
@@ -164,14 +170,59 @@ private fun DashboardScreen() {
 @Composable
 private fun TrayScreen() {
     val candidates by ServiceLocator.get().candidateRepository.candidates.collectAsState()
-    val pending = candidates.filter {
-        it.status == com.eliasgonzalez.expensetracker.domain.model.CandidateStatus.PENDING
-    }
+    val pending = candidates.filter { it.status == CandidateStatus.PENDING }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("🔔 ${pending.size} pendientes", style = MaterialTheme.typography.titleMedium)
         LazyColumn(Modifier.padding(top = 8.dp)) {
             items(pending) { candidate -> PendingRow(candidate) }
         }
+    }
+}
+
+private val activityTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+private fun activityIcon(type: ActivityType): String = when (type) {
+    ActivityType.EXPENSE_CREATED -> "✓"
+    ActivityType.EXPENSE_EDITED -> "✏️"
+    ActivityType.EXPENSE_DELETED -> "🗑️"
+    ActivityType.CANDIDATE_CREATED -> "💳"
+    ActivityType.CANDIDATE_ACCEPTED -> "✓"
+    ActivityType.CANDIDATE_EDITED -> "✏️"
+    ActivityType.CANDIDATE_REJECTED -> "✕"
+}
+
+private fun activityLabel(type: ActivityType): String = when (type) {
+    ActivityType.EXPENSE_CREATED -> "Gasto registrado"
+    ActivityType.EXPENSE_EDITED -> "Gasto editado"
+    ActivityType.EXPENSE_DELETED -> "Gasto eliminado"
+    ActivityType.CANDIDATE_CREATED -> "Gasto detectado"
+    ActivityType.CANDIDATE_ACCEPTED -> "Gasto aceptado"
+    ActivityType.CANDIDATE_EDITED -> "Gasto editado y aceptado"
+    ActivityType.CANDIDATE_REJECTED -> "Candidato rechazado"
+}
+
+@Composable
+private fun ActivityScreen() {
+    val entries by ServiceLocator.get().activityRepository.recent.collectAsState()
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Actividad reciente", style = MaterialTheme.typography.titleMedium)
+        LazyColumn(Modifier.padding(top = 8.dp)) {
+            items(entries) { entry -> ActivityRow(entry) }
+        }
+    }
+}
+
+@Composable
+private fun ActivityRow(entry: ActivityEntry) {
+    val time = remember(entry.timestamp) {
+        Instant.ofEpochMilli(entry.timestamp).atZone(ZoneId.systemDefault()).format(activityTimeFormatter)
+    }
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(
+            "${activityIcon(entry.type)} ${activityLabel(entry.type)}  ·  $time",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(entry.summary, style = MaterialTheme.typography.bodySmall)
     }
 }
 
