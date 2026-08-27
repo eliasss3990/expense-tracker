@@ -52,9 +52,11 @@ Manual, paso a paso:
    adb install -r \\wsl.localhost\Ubuntu\home\eliasgonzalez\workspaces\expense-tracker\app\build\outputs\apk\debug\app-debug.apk
    adb shell am start -n com.eliasgonzalez.expensetracker/.ui.MainActivity
    ```
-3. Al abrir por primera vez, otorgar el permiso de **acceso a notificaciones**
-   a la app: `Ajustes → Apps → Acceso especial → Acceso a notificaciones →
-   Expense Tracker POC`. Sin este permiso el listener no recibe nada.
+3. Al abrir, la app pide sola el permiso de notificaciones (Android 13+) y,
+   si falta el **acceso a notificaciones** (`NotificationListenerService`,
+   que Android no deja pedir con un diálogo por lo sensible que es),
+   muestra un banner amarillo con un botón "Activar ahora" que lleva
+   directo a esa pantalla de Ajustes. Al volver, el banner desaparece solo.
 4. Agregar el tile "Gasto" a los Ajustes rápidos: deslizar el panel de
    Ajustes rápidos → lápiz de editar → arrastrar el tile de Expense Tracker.
 
