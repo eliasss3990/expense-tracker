@@ -68,7 +68,7 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
             confidence = result.confidence,
         )
         scope.launch {
-            val id = ServiceLocator.get().createCandidate(candidate)
+            val id = ServiceLocator.get().createCandidate(candidate) ?: return@launch
             showCandidateNotification(candidate.copy(id = id))
         }
     }
