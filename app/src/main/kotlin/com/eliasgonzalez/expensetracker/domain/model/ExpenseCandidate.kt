@@ -4,9 +4,9 @@ enum class CandidateStatus { PENDING, ACCEPTED, EDITED, REJECTED }
 
 /**
  * "La aplicacion cree que detecto un gasto" - nunca es un gasto confirmado.
- * Separar esto de Expense es la pieza central de toda la arquitectura
- * (seccion 7 del plan): permite ser agresivo detectando pero conservador
- * al escribir datos financieros reales.
+ * Separar esto de Expense es la pieza central de toda la arquitectura:
+ * permite ser agresivo detectando pero conservador al escribir datos
+ * financieros reales.
  */
 data class ExpenseCandidate(
     val id: Long = 0,

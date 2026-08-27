@@ -1,7 +1,7 @@
 package com.eliasgonzalez.expensetracker.domain.model
 
 /**
- * Categorias fijas para esta etapa (seccion 6 del plan de arquitectura).
+ * Categorias fijas para esta etapa.
  * Reglas/aliases/aprendizaje de usuario quedan para una fase posterior -
  * por ahora alcanza con una lista cerrada y una categoria por defecto.
  */

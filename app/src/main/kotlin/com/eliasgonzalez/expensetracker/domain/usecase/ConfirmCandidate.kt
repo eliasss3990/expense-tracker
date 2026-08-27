@@ -9,8 +9,8 @@ import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 
 /**
- * Idempotente (seccion 60 del plan): si el candidato ya no esta PENDING,
- * no hace nada - evita duplicar el Expense si la accion llega dos veces.
+ * Idempotente: si el candidato ya no esta PENDING, no hace nada - evita
+ * duplicar el Expense si la accion llega dos veces.
  */
 class ConfirmCandidate(
     private val candidates: CandidateRepository,

@@ -5,7 +5,7 @@ package com.eliasgonzalez.expensetracker.notification
  * Busca un patrón de monto (Gs./₲/PYG + número) en cualquier notificación
  * y, si lo encuentra, intenta extraer el comercio de un "en <comercio>".
  *
- * Fase 5 del plan reemplaza esto por parsers por fuente (Itaú, Ueno,
+ * Una etapa futura reemplaza esto por parsers por fuente (Itaú, Ueno,
  * Google Wallet, etc.) con canHandle()/parse() propios.
  */
 object GenericPurchaseParser {

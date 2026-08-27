@@ -8,8 +8,8 @@ import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 
 /**
  * Un unico caso de uso para registro manual, Quick Tile y confirmacion de
- * candidatos (seccion 35 del plan) - la unica diferencia entre esos flujos
- * es el campo `source` del Expense, nunca la logica.
+ * candidatos - la unica diferencia entre esos flujos es el campo `source`
+ * del Expense, nunca la logica.
  */
 class RegisterExpense(
     private val expenses: ExpenseRepository,

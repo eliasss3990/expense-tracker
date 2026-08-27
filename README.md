@@ -1,13 +1,12 @@
 # Expense Tracker — POC
 
-Prueba de concepto para validar la pieza más riesgosa del plan de
-`finanzas_personales_arquitectura.md`: detectar notificaciones de pago,
-convertirlas en un `ExpenseCandidate` (nunca un gasto confirmado
-automáticamente), y dejar que el usuario Acepte/Edite/Rechace desde una
-notificación propia. También incluye un Quick Settings Tile para registro
-manual ultrarrápido.
+App Android personal para registrar y detectar gastos automáticamente:
+detectar notificaciones de pago, convertirlas en un `ExpenseCandidate`
+(nunca un gasto confirmado automáticamente), y dejar que el usuario
+Acepte/Edite/Rechace desde una notificación propia. También incluye un
+Quick Settings Tile para registro manual ultrarrápido.
 
-No usa Room ni Hilt todavía — todo vive en memoria (`CandidateStore`) a
+No usa Room ni Hilt todavía — todo vive en memoria a
 propósito, para iterar rápido sobre el mecanismo antes de invertir en
 persistencia.
 

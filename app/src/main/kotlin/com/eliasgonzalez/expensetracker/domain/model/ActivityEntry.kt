@@ -11,7 +11,7 @@ enum class ActivityType {
 }
 
 /**
- * Traza de auditoria (seccion 28-30 del plan). Sin esto, un Expense
+ * Traza de auditoria. Sin esto, un Expense
  * simplemente "cambia" sin dejar rastro de por que.
  */
 data class ActivityEntry(
