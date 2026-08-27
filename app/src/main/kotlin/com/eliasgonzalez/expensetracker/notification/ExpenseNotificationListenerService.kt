@@ -10,11 +10,16 @@ import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
-import com.eliasgonzalez.expensetracker.data.CandidateStore
-import com.eliasgonzalez.expensetracker.model.ExpenseCandidate
-import com.eliasgonzalez.expensetracker.model.Source
+import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
+import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.ui.EXTRA_EDIT_CANDIDATE_ID
 import com.eliasgonzalez.expensetracker.ui.QuickAddActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 const val CHANNEL_ID_CANDIDATES = "expense_candidates"
 const val ACTION_ACCEPT = "com.eliasgonzalez.expensetracker.ACTION_ACCEPT"
@@ -23,9 +28,16 @@ const val EXTRA_CANDIDATE_ID = "candidate_id"
 
 class ExpenseNotificationListenerService : NotificationListenerService() {
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         ensureChannel()
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -45,16 +57,20 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
         val result = GenericPurchaseParser.parse(context) ?: return
 
         val candidate = ExpenseCandidate(
-            id = CandidateStore.newId(),
             amount = result.amount,
             currency = result.currency,
             merchant = result.merchant,
-            source = Source.NOTIFICATION,
-            sourceApp = context.applicationName,
+            occurredAt = context.timestamp,
             detectedAt = context.timestamp,
+            sourceType = ExpenseSource.NOTIFICATION,
+            sourceApp = context.applicationName,
+            parserId = result.parserId,
+            confidence = result.confidence,
         )
-        CandidateStore.add(candidate)
-        showCandidateNotification(candidate)
+        scope.launch {
+            val id = ServiceLocator.get().createCandidate(candidate)
+            showCandidateNotification(candidate.copy(id = id))
+        }
     }
 
     private fun appLabelFor(packageName: String): String = try {

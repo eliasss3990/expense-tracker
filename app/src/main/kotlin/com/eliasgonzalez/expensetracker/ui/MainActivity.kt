@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.ui
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -27,24 +28,29 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.eliasgonzalez.expensetracker.data.CandidateStore
-import com.eliasgonzalez.expensetracker.model.CandidateStatus
-import com.eliasgonzalez.expensetracker.model.ExpenseCandidate
-import com.eliasgonzalez.expensetracker.notification.CandidateActionReceiver
-import com.eliasgonzalez.expensetracker.notification.ACTION_ACCEPT
-import com.eliasgonzalez.expensetracker.notification.ACTION_REJECT
-import com.eliasgonzalez.expensetracker.notification.EXTRA_CANDIDATE_ID
+import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.Expense
+import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.notification.isNotificationListenerEnabled
+import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.YearMonth
+import java.time.ZoneId
+import java.time.format.TextStyle
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     // Estado a nivel Activity (no de Compose) para que onResume() lo pueda
@@ -82,7 +88,7 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 context, Manifest.permission.POST_NOTIFICATIONS
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
@@ -129,24 +135,38 @@ private fun NotificationAccessBanner() {
     }
 }
 
+private fun isInCurrentMonth(epochMillis: Long): Boolean {
+    val month = YearMonth.from(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
+    return month == YearMonth.now()
+}
+
 @Composable
 private fun DashboardScreen() {
-    val confirmed = CandidateStore.confirmed()
-    val total = confirmed.sumOf { it.amount }
+    val expenses by ServiceLocator.get().expenseRepository.expenses.collectAsState()
+    val thisMonth = expenses.filter { isInCurrentMonth(it.occurredAt) }
+    val total = thisMonth.sumOf { it.amount }
+    val monthLabel = remember {
+        YearMonth.now().month.getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es")).uppercase() +
+            " " + YearMonth.now().year
+    }
+
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("AGOSTO 2026", style = MaterialTheme.typography.labelMedium)
+        Text(monthLabel, style = MaterialTheme.typography.labelMedium)
         Text("Gastado", style = MaterialTheme.typography.bodyMedium)
         Text("₲%,d".format(total), style = MaterialTheme.typography.headlineMedium)
         Text("Últimos gastos", style = MaterialTheme.typography.titleMedium)
         LazyColumn {
-            items(confirmed) { candidate -> ExpenseRow(candidate) }
+            items(expenses.take(20)) { expense -> ExpenseRow(expense) }
         }
     }
 }
 
 @Composable
 private fun TrayScreen() {
-    val pending = CandidateStore.pending()
+    val candidates by ServiceLocator.get().candidateRepository.candidates.collectAsState()
+    val pending = candidates.filter {
+        it.status == com.eliasgonzalez.expensetracker.domain.model.CandidateStatus.PENDING
+    }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("🔔 ${pending.size} pendientes", style = MaterialTheme.typography.titleMedium)
         LazyColumn(Modifier.padding(top = 8.dp)) {
@@ -156,29 +176,29 @@ private fun TrayScreen() {
 }
 
 @Composable
-private fun ExpenseRow(candidate: ExpenseCandidate) {
+private fun ExpenseRow(expense: Expense) {
     Card(Modifier.fillMaxSize().padding(vertical = 4.dp)) {
         Column(Modifier.padding(12.dp)) {
-            Text(candidate.merchant, style = MaterialTheme.typography.titleSmall)
-            Text("₲%,d".format(candidate.amount), style = MaterialTheme.typography.bodyMedium)
+            Text(expense.merchant, style = MaterialTheme.typography.titleSmall)
+            Text(
+                "₲%,d — %s".format(expense.amount, Category.fromId(expense.categoryId).label),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
 
 @Composable
 private fun PendingRow(candidate: ExpenseCandidate) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     Card(Modifier.fillMaxSize().padding(vertical = 4.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(candidate.merchant, style = MaterialTheme.typography.titleSmall)
             Text("₲%,d — ${candidate.sourceApp.orEmpty()}".format(candidate.amount))
             Row {
                 Button(onClick = {
-                    context.sendBroadcast(
-                        Intent(context, CandidateActionReceiver::class.java)
-                            .setAction(ACTION_ACCEPT)
-                            .putExtra(EXTRA_CANDIDATE_ID, candidate.id)
-                    )
+                    scope.launch { ServiceLocator.get().confirmCandidate(candidate.id) }
                 }) { Text("Aceptar") }
                 Button(onClick = {
                     val intent = Intent(context, QuickAddActivity::class.java)
@@ -186,11 +206,7 @@ private fun PendingRow(candidate: ExpenseCandidate) {
                     context.startActivity(intent)
                 }) { Text("Editar") }
                 Button(onClick = {
-                    context.sendBroadcast(
-                        Intent(context, CandidateActionReceiver::class.java)
-                            .setAction(ACTION_REJECT)
-                            .putExtra(EXTRA_CANDIDATE_ID, candidate.id)
-                    )
+                    scope.launch { ServiceLocator.get().rejectCandidate(candidate.id) }
                 }) { Text("Rechazar") }
             }
         }

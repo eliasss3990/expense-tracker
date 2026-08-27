@@ -10,54 +10,41 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.eliasgonzalez.expensetracker.data.CandidateStore
-import com.eliasgonzalez.expensetracker.model.CandidateStatus
-import com.eliasgonzalez.expensetracker.model.ExpenseCandidate
-import com.eliasgonzalez.expensetracker.model.Source
+import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
+import com.eliasgonzalez.expensetracker.domain.model.Expense
+import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
+import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
+import kotlinx.coroutines.launch
 
 const val EXTRA_EDIT_CANDIDATE_ID = "edit_candidate_id"
 
 /**
- * Pantalla única para dos casos de uso (mismo RegisterExpense conceptual):
+ * Pantalla única para dos casos de uso (mismo RegisterExpense por debajo):
  * - registro rápido desde el Quick Settings Tile (source = QUICK_TILE)
- * - edición de un candidato detectado antes de confirmarlo (status = EDITED)
+ * - edición de un candidato detectado antes de confirmarlo
  */
 class QuickAddActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val editId = intent.getLongExtra(EXTRA_EDIT_CANDIDATE_ID, -1).takeIf { it >= 0 }
-        val editingCandidate = editId?.let { CandidateStore.findById(it) }
+        val editingCandidate = editId?.let { ServiceLocator.get().candidateRepository.findById(it) }
+            ?.takeIf { it.status == CandidateStatus.PENDING }
 
         setContent {
             MaterialTheme {
                 Surface {
                     QuickAddScreen(
                         editing = editingCandidate,
-                        onSave = { amount, merchant ->
-                            if (editingCandidate != null) {
-                                editingCandidate.amount = amount
-                                editingCandidate.merchant = merchant
-                                editingCandidate.status = CandidateStatus.EDITED
-                            } else {
-                                CandidateStore.add(
-                                    ExpenseCandidate(
-                                        id = CandidateStore.newId(),
-                                        amount = amount,
-                                        merchant = merchant,
-                                        source = Source.QUICK_TILE,
-                                        detectedAt = System.currentTimeMillis(),
-                                        status = CandidateStatus.ACCEPTED,
-                                    )
-                                )
-                            }
-                            finish()
-                        },
+                        onSave = { amount, merchant -> finish() },
                     )
                 }
             }
@@ -65,13 +52,14 @@ class QuickAddActivity : ComponentActivity() {
     }
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun QuickAddScreen(
     editing: ExpenseCandidate?,
     onSave: (amount: Long, merchant: String) -> Unit,
 ) {
     var amountText by remember { mutableStateOf(editing?.amount?.toString().orEmpty()) }
     var merchantText by remember { mutableStateOf(editing?.merchant.orEmpty()) }
+    val scope = rememberCoroutineScope()
 
     Column(Modifier.padding(24.dp)) {
         Text(if (editing != null) "Editar gasto" else "Nuevo gasto")
@@ -90,7 +78,25 @@ private fun QuickAddScreen(
         Button(
             onClick = {
                 val amount = amountText.toLongOrNull() ?: 0
-                if (amount > 0 && merchantText.isNotBlank()) onSave(amount, merchantText)
+                if (amount <= 0 || merchantText.isBlank()) return@Button
+                scope.launch {
+                    val container = ServiceLocator.get()
+                    if (editing != null) {
+                        container.editCandidate(editing.id, amount, merchantText)
+                    } else {
+                        val now = System.currentTimeMillis()
+                        container.registerExpense(
+                            Expense(
+                                amount = amount,
+                                merchant = merchantText,
+                                occurredAt = now,
+                                createdAt = now,
+                                source = ExpenseSource.QUICK_TILE,
+                            )
+                        )
+                    }
+                    onSave(amount, merchantText)
+                }
             },
             modifier = Modifier.padding(top = 16.dp),
         ) { Text("Guardar") }
