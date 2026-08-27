@@ -1,28 +1,63 @@
-# Expense Tracker — POC
+# Expense Tracker
 
-App Android personal para registrar y detectar gastos automáticamente:
-detectar notificaciones de pago, convertirlas en un `ExpenseCandidate`
-(nunca un gasto confirmado automáticamente), y dejar que el usuario
-Acepte/Edite/Rechace desde una notificación propia. También incluye un
-Quick Settings Tile para registro manual ultrarrápido.
+App Android personal para registrar gastos y detectarlos automáticamente
+a partir de notificaciones de pago (banco, billeteras, etc.), sin nunca
+confirmar un gasto sin que el usuario lo revise.
 
-No usa Room ni Hilt todavía — todo vive en memoria a
-propósito, para iterar rápido sobre el mecanismo antes de invertir en
-persistencia.
+## Cómo funciona
 
-## Qué valida esta POC
+- `NotificationListenerService` capta notificaciones de otras apps. Un
+  parser genérico (regex sobre `Gs.`/`₲`/`PYG` + monto) las convierte en
+  un `ExpenseCandidate` — **nunca** un gasto confirmado directamente.
+- Antes de crear el candidato, se chequea si ya existe uno muy parecido
+  detectado hace poco (mismo monto+moneda, comercio equivalente, dentro
+  de una ventana de 5 minutos) — evita duplicar cuando el banco y una
+  billetera avisan la misma compra casi al mismo tiempo.
+- El candidato dispara una notificación propia con **Aceptar / Editar /
+  Rechazar**. Aceptar y Rechazar son idempotentes: repetir la acción
+  sobre un candidato ya resuelto no hace nada.
+- Hay una bandeja interna (tab "Bandeja") que sobrevive aunque se
+  descarte la notificación de Android — la fuente de verdad es el
+  `ExpenseCandidate` en la base, no la notificación del sistema.
+- Un Quick Settings Tile abre una pantalla de alta rápida, que reutiliza
+  el mismo caso de uso que la confirmación de candidatos (la única
+  diferencia es el campo `source`).
+- Categorías fijas seleccionables al aceptar/editar un gasto.
+- Tab "Actividad": traza de auditoría de todo lo que pasó (detectado →
+  aceptado/editado/rechazado → registrado), separada de la Bandeja
+  (que solo muestra lo pendiente).
+- Exportar backup en JSON desde el Dashboard (vía el selector de
+  archivos del sistema, sin pedir permisos de storage).
 
-- `NotificationListenerService` capturando notificaciones de otras apps.
-- Un parser genérico (regex sobre `Gs.`/`₲`/`PYG` + monto) que no depende de
-  un banco específico — el contrato real (`canHandle`/`parse`) queda para
-  cuando se agreguen parsers por fuente.
-- Notificación propia con acciones **Aceptar / Editar / Rechazar**, donde
-  Aceptar/Rechazar son idempotentes (un candidato ya procesado ignora
-  acciones repetidas).
-- Bandeja interna (tab "Bandeja") que sobrevive aunque se descarte la
-  notificación de Android — la fuente de verdad es el `ExpenseCandidate`,
-  no la notificación del sistema.
-- Quick Settings Tile que abre una pantalla mínima de alta rápida.
+## Arquitectura
+
+Capas separadas al estilo Clean Architecture:
+
+```text
+ui/            Compose (MainActivity, QuickAddActivity)
+notification/  NotificationListenerService, parser, receiver de acciones
+quicksettings/ TileService
+domain/        model/ repository/ (interfaces) usecase/ — sin Android
+data/local/    implementación con SQLite detrás de las interfaces de domain
+di/            ServiceLocator + AppContainer (DI manual, sin Hilt)
+```
+
+El dominio (`domain/`) no importa nada de Android ni de SQLite — solo
+conoce sus propias interfaces de repositorio. Eso es lo que permite tener
+tests unitarios puros en `src/test/` (11 tests, corren en JVM sin
+emulador) para la idempotencia y la deduplicación.
+
+**Por qué SQLite directo y no Room:** Room 2.8.x necesita KSP para el
+codegen de `@Entity`/`@Dao`, y al momento de armar este proyecto KSP
+todavía no publicaba soporte para Kotlin 2.4.10 (el que usa el Kotlin
+embebido de AGP 9). En vez de bajar la versión de Kotlin del proyecto
+entero por una sola librería, `data/local/DbHelper.kt` implementa la
+persistencia a mano detrás de las mismas interfaces de dominio. Migrar a
+Room después no debería tocar nada fuera de `data/local/`.
+
+**Por qué DI manual y no Hilt:** el grafo de dependencias es chico
+(un puñado de repositorios y casos de uso) — `di/AppContainer.kt` arma
+todo a mano en unas pocas líneas, sin la complejidad de un framework.
 
 ## Requisitos
 
@@ -59,6 +94,17 @@ Manual, paso a paso:
 4. Agregar el tile "Gasto" a los Ajustes rápidos: deslizar el panel de
    Ajustes rápidos → lápiz de editar → arrastrar el tile de Expense Tracker.
 
+## Cómo correr los tests
+
+```bash
+cd ~/workspaces/expense-tracker
+JAVA_HOME=/home/eliasgonzalez/.sdkman/candidates/java/current ./gradlew testDebugUnitTest
+```
+
+Son tests puros de JVM (sin Robolectric ni emulador) sobre los casos de
+uso de dominio, con fakes en memoria de los repositorios
+(`src/test/kotlin/.../domain/usecase/FakeRepositories.kt`).
+
 ## Cómo probar la detección
 
 No hace falta un pago real: cualquier notificación (de cualquier app) cuyo
@@ -67,19 +113,20 @@ el candidato. Formas rápidas de generarla:
 
 - Enviarte un mensaje/notificación de prueba (por ejemplo desde Telegram o
   un recordatorio) con ese texto.
-- Usar `adb shell cmd notification post` o una app de notificaciones de
-  prueba con ese contenido.
+- Usar `adb shell "cmd notification post -t '<título>' <tag> '<texto>'"`
+  (con comillas simples adentro, para que sobrevivan el viaje por varios
+  shells si se corre desde WSL vía el `adb.exe` de Windows).
 
 Al aparecer la notificación "💳 Gasto detectado", probar los tres botones y
 verificar en la pestaña **Bandeja** que el candidato desaparece de pendientes
-al aceptar/rechazar, y en **Dashboard** que el monto se suma solo cuando se
-acepta o edita (nunca si está pendiente o rechazado).
+al aceptar/rechazar, en **Actividad** que quedó la traza completa, y en
+**Dashboard** que el monto se suma solo cuando se acepta o edita (nunca si
+está pendiente o rechazado).
 
-## Qué NO es esta POC
+## Qué NO tiene todavía
 
-No implementa Room, categorías, merchant normalization, deduplicación,
-parsers por banco, sincronización, ni persistencia entre reinicios de la
-app (el `CandidateStore` es un singleton en memoria). Eso es intencional:
-la POC existe para validar el mecanismo Candidate → Confirm → Expense y
-cómo se siente en el celular antes de invertir en la Fase 1 completa del
-plan.
+Room (ver arriba por qué), Hilt, parsers por banco específico (el parser
+genérico no distingue Itaú de Google Wallet), merchant aliases/aprendizaje
+de usuario, presupuestos, voz, OCR, ni sincronización con ningún proveedor
+externo — la app es 100% local. El export a JSON es la única vía de
+backup por ahora.
