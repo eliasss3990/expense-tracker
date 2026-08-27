@@ -27,15 +27,31 @@ persistencia.
 
 ## Requisitos
 
-- Android Studio (o al menos JDK 17+ y Android SDK con `compileSdk 36`).
+- **No hace falta Android Studio.** El Android SDK (cmdline-tools,
+  platform 37, build-tools) y el JDK ya están instalados del lado de WSL
+  (`~/Android/Sdk`, JDK 21 vía sdkman).
 - Un teléfono Android 8.0+ (API 26+) conectado por USB con depuración
-  habilitada, o un emulador.
+  habilitada.
+- `adb` en el PATH de Windows para instalar en el celular (el USB queda
+  atado al lado Windows).
 
 ## Cómo correrla
 
-1. Abrir esta carpeta como proyecto en Android Studio y dejar que sincronice
-   Gradle (usa el wrapper incluido, Gradle 9.7.1).
-2. Conectar el celular por USB y correr la app (▶) apuntando al dispositivo.
+Opción rápida: doble clic en `C:\Scripts\expense-tracker-deploy\deploy.bat`
+— compila dentro de WSL y automáticamente instala + abre la app en el cel.
+
+Manual, paso a paso:
+
+1. Compilar dentro de WSL:
+   ```bash
+   cd ~/workspaces/expense-tracker
+   JAVA_HOME=/home/eliasgonzalez/.sdkman/candidates/java/current ./gradlew assembleDebug
+   ```
+2. Instalar y abrir desde Windows (con el celular conectado por USB):
+   ```
+   adb install -r \\wsl.localhost\Ubuntu\home\eliasgonzalez\workspaces\expense-tracker\app\build\outputs\apk\debug\app-debug.apk
+   adb shell am start -n com.eliasgonzalez.expensetracker/.ui.MainActivity
+   ```
 3. Al abrir por primera vez, otorgar el permiso de **acceso a notificaciones**
    a la app: `Ajustes → Apps → Acceso especial → Acceso a notificaciones →
    Expense Tracker POC`. Sin este permiso el listener no recibe nada.
