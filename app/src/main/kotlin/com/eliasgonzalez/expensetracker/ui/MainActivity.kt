@@ -25,7 +25,8 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -35,10 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import com.eliasgonzalez.expensetracker.data.CandidateStore
 import com.eliasgonzalez.expensetracker.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.model.ExpenseCandidate
@@ -49,30 +47,38 @@ import com.eliasgonzalez.expensetracker.notification.EXTRA_CANDIDATE_ID
 import com.eliasgonzalez.expensetracker.notification.isNotificationListenerEnabled
 
 class MainActivity : ComponentActivity() {
+    // Estado a nivel Activity (no de Compose) para que onResume() lo pueda
+    // actualizar de forma confiable. Usar LocalLifecycleOwner de Compose acá
+    // resultó no disparar consistentemente al volver de la pantalla de
+    // Ajustes en algunos dispositivos (Samsung OneUI).
+    private val listenerEnabledState = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                AppRoot()
+                AppRoot(listenerEnabledState)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listenerEnabledState.value = isNotificationListenerEnabled(this)
     }
 }
 
 @Composable
-private fun AppRoot() {
+private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
     var tab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     // POST_NOTIFICATIONS (API 33+) sí se puede pedir con el dialogo estandar.
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* el resultado no cambia el flujo, solo queda otorgado o no */ }
 
-    val listenerEnabled = remember { mutableStateOf(isNotificationListenerEnabled(context)) }
-
-    DisposableEffect(lifecycleOwner) {
+    LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 context, Manifest.permission.POST_NOTIFICATIONS
@@ -81,15 +87,6 @@ private fun AppRoot() {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
-        val observer = LifecycleEventObserver { _, event ->
-            // Al volver de Ajustes (donde el usuario habilita el acceso a
-            // notificaciones a mano), re-chequear el estado.
-            if (event == Lifecycle.Event.ON_RESUME) {
-                listenerEnabled.value = isNotificationListenerEnabled(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold { padding ->
