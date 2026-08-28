@@ -3,11 +3,14 @@
     <style name="Theme.ExpenseTracker" parent="android:Theme.Material.Light.NoActionBar" />
 
     <!-- Splash nativo (Android 12+, con compat hacia atrás vía core-splashscreen):
-    fondo índigo de marca + la misma marca ₲ del ícono, en vez de la
-    pantalla blanca con el ícono genérico por defecto del sistema. -->
+    fondo violeta profundo (el extremo más oscuro del degradado del
+    ícono, más rico que el índigo plano anterior) + la misma marca de la
+    moneda del ícono, con una entrada animada (rebote + check
+    dibujándose) en vez del ícono estático de antes. -->
     <style name="Theme.ExpenseTracker.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/brand_primary</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_brand_mark_animated</item>
+        <item name="windowSplashScreenAnimationDuration">600</item>
         <item name="postSplashScreenTheme">@style/Theme.ExpenseTracker</item>
     </style>
 </resources>

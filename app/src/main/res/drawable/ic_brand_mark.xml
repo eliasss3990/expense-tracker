@@ -1,0 +1,50 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Marca única de la app: una "moneda confirmada" flotando sobre el
+    degradado de fondo (en vez de ocupar casi todo el ícono como en el
+    primer intento - la máscara circular de los launchers recortaba
+    justo en el borde del disco y tapaba el degradado). El disco ahora
+    es bien más chico que la zona segura del ícono adaptativo (108dp,
+    radio de seguridad ~33) para que el color de fondo se note alrededor
+    como un aro. Check más grueso y seguro, y un acento cálido (mismo
+    ámbar de la categoría Comida) representando el gasto recién
+    detectado por una notificación. Todo en un único archivo para no
+    repetir esta forma en el ícono adaptativo y en el splash - ambos
+    apuntan acá. -->
+    <group android:name="coin_group"
+        android:pivotX="54"
+        android:pivotY="54">
+        <path android:name="coin_disc" android:pathData="M32,54 A22,22 0 1,1 76,54 A22,22 0 1,1 32,54 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="32"
+                    android:startY="32"
+                    android:endX="76"
+                    android:endY="76"
+                    android:startColor="#FFFFFF"
+                    android:endColor="#F1F0F7" />
+            </aapt:attr>
+        </path>
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#4338CA"
+            android:strokeAlpha="0.16"
+            android:strokeWidth="2"
+            android:pathData="M32,54 A22,22 0 1,1 76,54 A22,22 0 1,1 32,54 Z" />
+        <path android:name="check_path"
+            android:fillColor="#00000000"
+            android:strokeColor="#3730A3"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:trimPathStart="0"
+            android:trimPathEnd="1"
+            android:pathData="M43,55 L50,62 L69,42" />
+    </group>
+    <path android:name="accent_dot" android:fillColor="#F59E0B" android:pathData="M72,36 A5,5 0 1,1 72,36.01 Z" />
+</vector>
