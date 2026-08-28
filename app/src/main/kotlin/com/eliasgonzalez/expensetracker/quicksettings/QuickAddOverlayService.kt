@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.quicksettings
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -55,13 +56,83 @@ import kotlinx.coroutines.launch
  * esta ventanita, esa app pierde el foco de teclado, un caso de borde
  * aceptable frente al bug real del doble toque.
  */
+/** Paleta de la ventanita para un tema (claro u oscuro) - vistas nativas
+ * no pueden leer el ExpenseTrackerTheme de Compose, así que se repiten
+ * acá los mismos hex que ui/theme/Color.kt para los dos modos. */
+private class OverlayPalette(
+    val surface: Int,
+    val onSurface: Int,
+    val fieldBg: Int,
+    val fieldStroke: Int,
+    val hint: Int,
+    val chipUnselectedBg: Int,
+    val chipUnselectedText: Int,
+    val closeBg: Int,
+    val closeIcon: Int,
+    val primary: Int,
+    val onPrimary: Int,
+    val dragHandle: Int,
+)
+
+private val LIGHT_PALETTE = OverlayPalette(
+    surface = Color.WHITE,
+    onSurface = Color.parseColor("#1E1B4B"),
+    fieldBg = Color.parseColor("#F7F7FB"),
+    fieldStroke = Color.parseColor("#E2E1EC"),
+    hint = Color.parseColor("#9691A8"),
+    chipUnselectedBg = Color.parseColor("#F1F0F7"),
+    chipUnselectedText = Color.parseColor("#6B7280"),
+    closeBg = Color.parseColor("#E0E7FF"),
+    closeIcon = Color.parseColor("#4338CA"),
+    primary = Color.parseColor("#4338CA"),
+    onPrimary = Color.WHITE,
+    dragHandle = Color.parseColor("#D1D5DB"),
+)
+
+private val DARK_PALETTE = OverlayPalette(
+    surface = Color.parseColor("#1D1B24"),
+    onSurface = Color.parseColor("#F1F0F7"),
+    fieldBg = Color.parseColor("#26232F"),
+    fieldStroke = Color.parseColor("#37333F"),
+    hint = Color.parseColor("#8B879B"),
+    chipUnselectedBg = Color.parseColor("#26232F"),
+    chipUnselectedText = Color.parseColor("#9CA3AF"),
+    closeBg = Color.parseColor("#332F55"),
+    closeIcon = Color.parseColor("#A5B4FC"),
+    primary = Color.parseColor("#A5B4FC"),
+    onPrimary = Color.parseColor("#1E1B4B"),
+    dragHandle = Color.parseColor("#4B4758"),
+)
+
+/** Mismos hex que CategoryPalette (ui/theme/Color.kt) - Vistas nativas no
+ * pueden usar androidx.compose.ui.graphics.Color, así que se repiten acá. */
+private fun categoryColor(category: Category): Int = when (category) {
+    Category.FOOD -> Color.parseColor("#F59E0B")
+    Category.FUEL -> Color.parseColor("#EF4444")
+    Category.GROCERIES -> Color.parseColor("#10B981")
+    Category.ENTERTAINMENT -> Color.parseColor("#8B5CF6")
+    Category.SUBSCRIPTIONS -> Color.parseColor("#EC4899")
+    Category.TRANSPORT -> Color.parseColor("#3B82F6")
+    Category.SHOPPING -> Color.parseColor("#F97316")
+    Category.HEALTH -> Color.parseColor("#14B8A6")
+    Category.EDUCATION -> Color.parseColor("#0EA5E9")
+    Category.OTHER -> Color.parseColor("#6B7280")
+}
+
 class QuickAddOverlayService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var windowManager: WindowManager
     private lateinit var rootView: View
     private lateinit var layoutParams: WindowManager.LayoutParams
+    private lateinit var amountInput: EditText
+    private lateinit var merchantInput: EditText
     private var selectedCategory: Category = Category.OTHER
+    private val palette: OverlayPalette
+        get() {
+            val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+            return if (nightMode == Configuration.UI_MODE_NIGHT_YES) DARK_PALETTE else LIGHT_PALETTE
+        }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -91,6 +162,24 @@ class QuickAddOverlayService : Service() {
         windowManager.addView(rootView, layoutParams)
     }
 
+    // El Service no se recrea con un cambio de tema (a diferencia de una
+    // Activity), así que sin esto la tarjeta se queda pintada con la
+    // paleta de cuando se abrió si el sistema cambia de claro a oscuro
+    // (o viceversa) mientras sigue flotando en pantalla.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!::rootView.isInitialized) return
+
+        val previousAmount = amountInput.text.toString()
+        val previousMerchant = merchantInput.text.toString()
+
+        runCatching { windowManager.removeView(rootView) }
+        rootView = buildCardView()
+        amountInput.setText(previousAmount)
+        merchantInput.setText(previousMerchant)
+        windowManager.addView(rootView, layoutParams)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return START_NOT_STICKY
     }
@@ -117,6 +206,7 @@ class QuickAddOverlayService : Service() {
 
     private fun buildCardView(): View {
         val density = resources.displayMetrics.density
+        val colors = palette
         fun dp(value: Int) = (value * density).toInt()
         fun matchWidth() = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -125,48 +215,84 @@ class QuickAddOverlayService : Service() {
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(20))
+            setPadding(dp(20), dp(14), dp(20), dp(20))
             background = GradientDrawable().apply {
                 cornerRadius = dp(28).toFloat()
-                setColor(Color.WHITE)
+                setColor(colors.surface)
             }
             elevation = dp(8).toFloat()
         }
 
+        // Manija de arrastre - mismo lenguaje visual que el drag handle de
+        // los ModalBottomSheet de Material3 usados en el resto de la app.
+        val dragHandle = View(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(2).toFloat()
+                setColor(colors.dragHandle)
+            }
+        }
+        attachDragHandling(dragHandle)
+        card.addView(
+            dragHandle,
+            LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(14)
+            },
+        )
+
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, dp(12))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(14))
         }
         val headerTitle = TextView(this).apply {
-            text = "☰  Nuevo gasto"
-            textSize = 16f
-            setTextColor(Color.DKGRAY)
+            text = "Nuevo gasto"
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(colors.onSurface)
         }
-        attachDragHandling(headerTitle)
         val closeButton = TextView(this).apply {
             text = "✕"
-            textSize = 16f
-            setTextColor(Color.DKGRAY)
-            setPadding(dp(12), 0, 0, 0)
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(colors.closeIcon)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(colors.closeBg)
+            }
             setOnClickListener { closeOverlay() }
         }
         headerRow.addView(
             headerTitle,
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
         )
-        headerRow.addView(closeButton)
+        headerRow.addView(closeButton, LinearLayout.LayoutParams(dp(32), dp(32)))
         card.addView(headerRow, matchWidth())
 
-        val amountInput = EditText(this).apply {
+        fun styleField(editText: EditText) {
+            editText.background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(colors.fieldBg)
+                setStroke(dp(1), colors.fieldStroke)
+            }
+            editText.setPadding(dp(14), dp(12), dp(14), dp(12))
+            editText.setTextColor(colors.onSurface)
+            editText.setHintTextColor(colors.hint)
+            editText.textSize = 16f
+        }
+
+        amountInput = EditText(this).apply {
             hint = "Monto (₲)"
             inputType = InputType.TYPE_CLASS_NUMBER
+            styleField(this)
         }
         allowKeyboardFocus(amountInput)
-        card.addView(amountInput, matchWidth())
+        card.addView(amountInput, matchWidth().apply { bottomMargin = dp(10) })
 
-        val merchantInput = EditText(this).apply {
+        merchantInput = EditText(this).apply {
             hint = "Comercio"
             inputType = InputType.TYPE_CLASS_TEXT
+            styleField(this)
         }
         allowKeyboardFocus(merchantInput)
         card.addView(merchantInput, matchWidth())
@@ -176,14 +302,14 @@ class QuickAddOverlayService : Service() {
         Category.entries.forEach { category ->
             val chip = TextView(this).apply {
                 text = category.label
-                setPadding(dp(12), dp(6), dp(12), dp(6))
-                setTextColor(Color.DKGRAY)
-                background = chipBackground(dp(16), selected = category == selectedCategory)
+                textSize = 13f
+                setPadding(dp(12), dp(7), dp(12), dp(7))
+                applyChipStyle(this, category, selected = category == selectedCategory)
                 setOnClickListener {
                     val previous = selectedCategory
                     selectedCategory = category
-                    categoryChips[previous]?.background = chipBackground(dp(16), selected = false)
-                    background = chipBackground(dp(16), selected = true)
+                    categoryChips[previous]?.let { applyChipStyle(it, previous, selected = false) }
+                    applyChipStyle(this, category, selected = true)
                 }
             }
             val params = LinearLayout.LayoutParams(
@@ -194,7 +320,7 @@ class QuickAddOverlayService : Service() {
             categoryChips[category] = chip
         }
         val categoryScroll = HorizontalScrollView(this).apply {
-            setPadding(0, dp(12), 0, dp(12))
+            setPadding(0, dp(12), 0, dp(14))
             isHorizontalScrollBarEnabled = false
             addView(categoryRow)
         }
@@ -203,10 +329,28 @@ class QuickAddOverlayService : Service() {
         val buttonsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val cancelButton = Button(this).apply {
             text = "Cancelar"
+            isAllCaps = false
+            textSize = 15f
+            setTextColor(colors.primary)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(24).toFloat()
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(1), colors.primary)
+            }
+            stateListAnimator = null
             setOnClickListener { closeOverlay() }
         }
         val saveButton = Button(this).apply {
             text = "Guardar"
+            isAllCaps = false
+            textSize = 15f
+            setTextColor(colors.onPrimary)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(24).toFloat()
+                setColor(colors.primary)
+            }
+            stateListAnimator = null
             setOnClickListener {
                 val amount = amountInput.text.toString().toLongOrNull() ?: 0
                 val merchant = merchantInput.text.toString().trim()
@@ -230,16 +374,28 @@ class QuickAddOverlayService : Service() {
                 }
             }
         }
-        buttonsRow.addView(cancelButton)
-        buttonsRow.addView(saveButton)
+        buttonsRow.addView(
+            cancelButton,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(8)
+            },
+        )
+        buttonsRow.addView(saveButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         card.addView(buttonsRow)
 
         return card
     }
 
-    private fun chipBackground(radius: Int, selected: Boolean) = GradientDrawable().apply {
-        cornerRadius = radius.toFloat()
-        setColor(if (selected) Color.parseColor("#D8CCFF") else Color.parseColor("#EEEEEE"))
+    private fun applyChipStyle(chip: TextView, category: Category, selected: Boolean) {
+        val color = categoryColor(category)
+        val colors = palette
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        chip.setTextColor(if (selected) color else colors.chipUnselectedText)
+        chip.background = GradientDrawable().apply {
+            cornerRadius = dp(16).toFloat()
+            setColor(if (selected) Color.argb(46, Color.red(color), Color.green(color), Color.blue(color)) else colors.chipUnselectedBg)
+        }
     }
 
     private fun attachDragHandling(header: View) {
