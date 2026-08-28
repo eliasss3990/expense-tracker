@@ -52,7 +52,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-private fun activityIcon(type: ActivityType) = when (type) {
+internal fun activityIcon(type: ActivityType) = when (type) {
     ActivityType.EXPENSE_CREATED, ActivityType.CANDIDATE_ACCEPTED -> Icons.Filled.CheckCircle
     ActivityType.EXPENSE_EDITED, ActivityType.CANDIDATE_EDITED -> Icons.Filled.Create
     ActivityType.EXPENSE_DELETED -> Icons.Filled.Delete
@@ -60,13 +60,13 @@ private fun activityIcon(type: ActivityType) = when (type) {
     ActivityType.CANDIDATE_REJECTED -> Icons.Filled.Close
 }
 
-private fun activityColor(type: ActivityType) = when (type) {
+internal fun activityColor(type: ActivityType) = when (type) {
     ActivityType.EXPENSE_CREATED, ActivityType.CANDIDATE_ACCEPTED -> IncomePositive
     ActivityType.CANDIDATE_REJECTED, ActivityType.EXPENSE_DELETED -> ExpenseNegative
     else -> BrandPrimary
 }
 
-private fun activityLabel(type: ActivityType): String = when (type) {
+internal fun activityLabel(type: ActivityType): String = when (type) {
     ActivityType.EXPENSE_CREATED -> "Gasto registrado"
     ActivityType.EXPENSE_EDITED -> "Gasto editado"
     ActivityType.EXPENSE_DELETED -> "Gasto eliminado"

@@ -59,7 +59,7 @@ import java.time.ZoneId
 import java.time.format.TextStyle
 import java.util.Locale
 
-private fun isInCurrentMonth(epochMillis: Long): Boolean {
+internal fun isInCurrentMonth(epochMillis: Long): Boolean {
     val month = YearMonth.from(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
     return month == YearMonth.now()
 }
