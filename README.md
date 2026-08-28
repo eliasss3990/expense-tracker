@@ -99,20 +99,16 @@ Room después no debería tocar nada fuera de `data/local/`.
 (un puñado de repositorios y casos de uso) — `di/AppContainer.kt` arma
 todo a mano en unas pocas líneas, sin la complejidad de un framework.
 
-## Requisitos
+## Instalación
 
-- **No hace falta Android Studio.** El Android SDK (cmdline-tools,
-  platform 37, build-tools) y el JDK ya están instalados del lado de WSL
-  (`~/Android/Sdk`, JDK 21 vía sdkman).
-- Un teléfono Android 8.0+ (API 26+) conectado por USB con depuración
-  habilitada.
-- `adb` en el PATH de Windows para instalar en el celular (el USB queda
-  atado al lado Windows).
-
-## Cómo correrla
-
-Opción rápida: doble clic en `C:\Scripts\expense-tracker-deploy\deploy.bat`
-— compila dentro de WSL y automáticamente instala + abre la app en el cel.
+**Uso normal (sin cable, sin compilar nada):** cada push a `main` pasa por
+CI (tests + build + E2E) y publica un APK firmado como GitHub Release. La
+propia app chequea al abrir si hay una versión más nueva que la instalada
+y avisa con un banner; también se puede forzar el chequeo a mano desde el
+menú (⋮) del Dashboard. Para instalar por primera vez: descargar el APK
+de la [última Release](https://github.com/eliasss3990/expense-tracker/releases/latest)
+desde el celular y abrirlo (Android va a pedir permiso para instalar
+desde esa fuente la primera vez).
 
 Manual, paso a paso:
 
