@@ -1,27 +1,45 @@
 package com.eliasgonzalez.expensetracker.quicksettings
 
-import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.service.quicksettings.TileService
-import com.eliasgonzalez.expensetracker.notification.BubbleSupport
 
 /**
- * Tocar el tile ya no abre QuickAddActivity en pantalla completa: postea
- * una notificación-burbuja que se auto-expande al instante, mostrando la
- * misma pantalla pero como ventanita chica y movible (estilo Now Bar).
- *
- * No hay una API pública para forzar el cierre del panel de Ajustes
- * rápidos sin arrancar una Activity (no existe `collapsePanels()` en
- * `TileService`) — el panel se cierra solo al tocar afuera, como con
- * cualquier otro tile que no navega a una pantalla.
+ * Tocar el tile "Gasto" abre una ventanita flotante y movible
+ * (QuickAddOverlayService) en vez de una pantalla completa. Requiere el
+ * permiso especial "Mostrar sobre otras apps" - si falta, lleva directo
+ * a esa pantalla de Ajustes en vez de fallar en silencio.
  */
 class RegisterExpenseTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        BubbleSupport.ensureChannel(this)
-        BubbleSupport.ensureShortcut(this)
-        val notification = BubbleSupport.buildQuickAddBubbleNotification(this)
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(BubbleSupport.NOTIFICATION_ID, notification)
+
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName"),
+            ).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                startActivityAndCollapse(
+                    PendingIntent.getActivity(
+                        this,
+                        0,
+                        intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                startActivityAndCollapse(intent)
+            }
+            return
+        }
+
+        startService(Intent(this, QuickAddOverlayService::class.java))
     }
 }
