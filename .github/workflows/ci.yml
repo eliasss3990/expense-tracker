@@ -38,7 +38,16 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
       - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
@@ -58,7 +67,16 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
       - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
@@ -84,7 +102,16 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
       - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null

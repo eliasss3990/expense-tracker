@@ -1,9 +1,9 @@
 name: Release
 
 # Corre después de un merge a main - en ese punto ya pasó todo el CI
-# (validate + unit tests + build + E2E) porque main exige esos checks
-# antes de aceptar el PR. Este workflow no vuelve a "aprobar" nada,
-# solo empaqueta y publica lo que ya se validó.
+# (validate + unit tests + build) porque main exige esos checks antes de
+# aceptar el PR. Este workflow no vuelve a "aprobar" nada, solo empaqueta
+# y publica lo que ya se validó.
 on:
   push:
     branches: [main]
@@ -26,7 +26,16 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
       - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
