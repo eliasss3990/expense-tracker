@@ -24,9 +24,15 @@ class FakeExpenseRepository : ExpenseRepository {
         return id
     }
 
+    override suspend fun update(expense: Expense) {
+        _expenses.value = _expenses.value.map { if (it.id == expense.id) expense else it }
+    }
+
     override suspend fun delete(id: Long) {
         _expenses.value = _expenses.value.filterNot { it.id == id }
     }
+
+    override fun findById(id: Long): Expense? = _expenses.value.find { it.id == id }
 }
 
 class FakeCandidateRepository : CandidateRepository {

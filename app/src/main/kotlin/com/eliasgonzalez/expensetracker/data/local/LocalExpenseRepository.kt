@@ -30,11 +30,21 @@ class LocalExpenseRepository(private val dbHelper: DbHelper) : ExpenseRepository
         id
     }
 
+    override suspend fun update(expense: Expense) = withContext(Dispatchers.IO) {
+        dbHelper.writableDatabase.update(
+            "expenses", expense.toContentValues(), "id = ?", arrayOf(expense.id.toString())
+        )
+        _expenses.value = _expenses.value.map { if (it.id == expense.id) expense else it }
+        Unit
+    }
+
     override suspend fun delete(id: Long) = withContext(Dispatchers.IO) {
         dbHelper.writableDatabase.delete("expenses", "id = ?", arrayOf(id.toString()))
         _expenses.value = _expenses.value.filterNot { it.id == id }
         Unit
     }
+
+    override fun findById(id: Long): Expense? = _expenses.value.find { it.id == id }
 
     private fun Expense.toContentValues() = ContentValues().apply {
         put("amount", amount)

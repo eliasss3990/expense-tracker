@@ -11,7 +11,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +52,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -350,9 +353,12 @@ private fun isInCurrentMonth(epochMillis: Long): Boolean {
 
 @Composable
 private fun DashboardScreen() {
+    val scope = rememberCoroutineScope()
     val expenses by ServiceLocator.get().expenseRepository.expenses.collectAsState()
     val sortedExpenses = remember(expenses) { expenses.sortedByDescending { it.createdAt } }
     var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
+    var selectedIds by remember { mutableStateOf(setOf<Long>()) }
+    val selectionMode = selectedIds.isNotEmpty()
     val thisMonth = remember(expenses) { expenses.filter { isInCurrentMonth(it.occurredAt) } }
     val total = thisMonth.sumOf { it.amount }
     val average = if (thisMonth.isNotEmpty()) total / thisMonth.size else 0
@@ -411,13 +417,54 @@ private fun DashboardScreen() {
         }
 
         item {
-            Text(
-                "Últimos gastos",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 4.dp),
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (selectionMode) {
+                    Text(
+                        "${selectedIds.size} seleccionado${if (selectedIds.size == 1) "" else "s"}",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Row {
+                        IconButton(onClick = { selectedIds = emptySet() }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Cancelar selección")
+                        }
+                        IconButton(
+                            onClick = {
+                                val toDelete = selectedIds
+                                selectedIds = emptySet()
+                                scope.launch { ServiceLocator.get().deleteExpense.many(toDelete) }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Eliminar seleccionados",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                } else {
+                    Text("Últimos gastos", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
+        items(sortedExpenses.take(visibleCount), key = { it.id }) { expense ->
+            ExpenseRow(
+                expense = expense,
+                selectionMode = selectionMode,
+                selected = expense.id in selectedIds,
+                onToggleSelect = {
+                    selectedIds = if (expense.id in selectedIds) {
+                        selectedIds - expense.id
+                    } else {
+                        selectedIds + expense.id
+                    }
+                },
+                onEnterSelection = { selectedIds = setOf(expense.id) },
             )
         }
-        items(sortedExpenses.take(visibleCount)) { expense -> ExpenseRow(expense) }
 
         if (visibleCount < sortedExpenses.size) {
             item {
@@ -499,34 +546,145 @@ private fun relativeDay(epochMillis: Long): String {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ExpenseRow(expense: Expense) {
+private fun ExpenseRow(
+    expense: Expense,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onToggleSelect: () -> Unit,
+    onEnterSelection: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var isEditing by remember(expense.id) { mutableStateOf(false) }
+
     Card(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { if (selectionMode) onToggleSelect() },
+                onLongClick = { if (!selectionMode) onEnterSelection() },
+            ),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(
-            Modifier.padding(12.dp).fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CategoryAvatar(Category.fromId(expense.categoryId))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(expense.merchant, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(
-                    relativeDay(expense.occurredAt),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(Modifier.padding(12.dp)) {
+            if (isEditing) {
+                ExpenseInlineEditForm(
+                    expense = expense,
+                    onCancel = { isEditing = false },
+                    onSave = { amount, merchant, category ->
+                        scope.launch {
+                            ServiceLocator.get().editExpense(expense.id, amount, merchant, category.id)
+                        }
+                        isEditing = false
+                    },
                 )
+            } else {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (selectionMode) {
+                        Checkbox(checked = selected, onCheckedChange = { onToggleSelect() })
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    CategoryAvatar(Category.fromId(expense.categoryId))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            expense.merchant,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            relativeDay(expense.occurredAt),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        "₲%,d".format(expense.amount),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (!selectionMode) {
+                        IconButton(onClick = { isEditing = true }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Editar gasto")
+                        }
+                        IconButton(onClick = { scope.launch { ServiceLocator.get().deleteExpense(expense.id) } }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Eliminar gasto",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
             }
-            Text(
-                "₲%,d".format(expense.amount),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+        }
+    }
+}
+
+@Composable
+private fun ExpenseInlineEditForm(
+    expense: Expense,
+    onCancel: () -> Unit,
+    onSave: (amount: Long, merchant: String, category: Category) -> Unit,
+) {
+    var amountText by remember { mutableStateOf(expense.amount.toString()) }
+    var merchantText by remember { mutableStateOf(expense.merchant) }
+    var category by remember { mutableStateOf(Category.fromId(expense.categoryId)) }
+
+    Text("Editar gasto", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    OutlinedTextField(
+        value = amountText,
+        onValueChange = { amountText = it.filter(Char::isDigit) },
+        label = { Text("Monto (₲)") },
+        singleLine = true,
+        modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = merchantText,
+        onValueChange = { merchantText = it },
+        label = { Text("Comercio") },
+        singleLine = true,
+        modifier = Modifier.padding(top = 10.dp).fillMaxWidth(),
+    )
+    Row(
+        Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Category.entries.forEach { option ->
+            val selected = option == category
+            FilterChip(
+                selected = selected,
+                onClick = { category = option },
+                label = { Text(option.label) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
+                    selectedLabelColor = option.brandColor(),
+                ),
             )
         }
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(top = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancelar") }
+        Button(
+            onClick = {
+                val amount = amountText.toLongOrNull() ?: 0
+                if (amount <= 0 || merchantText.isBlank()) return@Button
+                onSave(amount, merchantText, category)
+            },
+            modifier = Modifier.weight(1f),
+        ) { Text("Guardar") }
     }
 }
 
