@@ -32,6 +32,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -42,6 +44,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PieChart
@@ -78,12 +81,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
@@ -283,9 +288,10 @@ private fun ManualAddSheet(onDismiss: () -> Unit) {
             Text("Nuevo gasto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             OutlinedTextField(
                 value = amountText,
-                onValueChange = { amountText = it.filter(Char::isDigit) },
+                onValueChange = { amountText = sanitizeAmountInput(it) },
                 label = { Text("Monto (₲)") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.padding(top = 16.dp).fillMaxWidth(),
             )
             OutlinedTextField(
@@ -360,6 +366,18 @@ private fun DashboardScreen() {
     var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     val selectionMode = selectedIds.isNotEmpty()
+    var dateRangeFilter by rememberSaveable { mutableStateOf(DateRangeFilter.ALL) }
+    var specificMonth by rememberSaveable { mutableStateOf<YearMonth?>(null) }
+    var categoryFilter by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var showFilterSheet by remember { mutableStateOf(false) }
+    val activeFilterCount = categoryFilter.size + if (dateRangeFilter != DateRangeFilter.ALL) 1 else 0
+    val filteredExpenses = remember(sortedExpenses, dateRangeFilter, specificMonth, categoryFilter) {
+        sortedExpenses.filter {
+            matchesDateRange(it, dateRangeFilter, specificMonth) &&
+                (categoryFilter.isEmpty() || it.categoryId in categoryFilter)
+        }
+    }
+    LaunchedEffect(dateRangeFilter, specificMonth, categoryFilter) { visibleCount = EXPENSES_PAGE_SIZE }
     val thisMonth = remember(expenses) { expenses.filter { isInCurrentMonth(it.occurredAt) } }
     val total = thisMonth.sumOf { it.amount }
     val average = if (thisMonth.isNotEmpty()) total / thisMonth.size else 0
@@ -448,10 +466,48 @@ private fun DashboardScreen() {
                     }
                 } else {
                     Text("Últimos gastos", style = MaterialTheme.typography.titleMedium)
+                    BadgedBox(
+                        badge = {
+                            if (activeFilterCount > 0) {
+                                Badge { Text(activeFilterCount.toString()) }
+                            }
+                        },
+                    ) {
+                        IconButton(onClick = { showFilterSheet = true }) {
+                            Icon(
+                                Icons.Filled.FilterList,
+                                contentDescription = "Filtrar gastos",
+                                tint = if (activeFilterCount > 0) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
-        items(sortedExpenses.take(visibleCount), key = { it.id }) { expense ->
+
+        if (filteredExpenses.isEmpty()) {
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "Ningún gasto coincide con estos filtros",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = { dateRangeFilter = DateRangeFilter.ALL; specificMonth = null; categoryFilter = emptySet() }) {
+                        Text("Limpiar filtros")
+                    }
+                }
+            }
+        }
+
+        items(filteredExpenses.take(visibleCount), key = { it.id }) { expense ->
             ExpenseRow(
                 expense = expense,
                 selectionMode = selectionMode,
@@ -467,12 +523,123 @@ private fun DashboardScreen() {
             )
         }
 
-        if (visibleCount < sortedExpenses.size) {
+        if (visibleCount < filteredExpenses.size) {
             item {
                 TextButton(
                     onClick = { visibleCount += EXPENSES_PAGE_SIZE },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Cargar más") }
+            }
+        }
+    }
+
+    if (showFilterSheet) {
+        ExpenseFilterSheet(
+            dateRange = dateRangeFilter,
+            onDateRangeChange = { dateRangeFilter = it; specificMonth = null },
+            specificMonth = specificMonth,
+            availableMonths = remember(expenses) { availableMonths(expenses) },
+            onSelectMonth = { dateRangeFilter = DateRangeFilter.SPECIFIC_MONTH; specificMonth = it },
+            selectedCategories = categoryFilter,
+            onToggleCategory = { id ->
+                categoryFilter = if (id in categoryFilter) categoryFilter - id else categoryFilter + id
+            },
+            onClear = { dateRangeFilter = DateRangeFilter.ALL; specificMonth = null; categoryFilter = emptySet() },
+            onDismiss = { showFilterSheet = false },
+        )
+    }
+}
+
+private val monthChipFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM yyyy", Locale.forLanguageTag("es"))
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ExpenseFilterSheet(
+    dateRange: DateRangeFilter,
+    onDateRangeChange: (DateRangeFilter) -> Unit,
+    specificMonth: YearMonth?,
+    availableMonths: List<YearMonth>,
+    onSelectMonth: (YearMonth) -> Unit,
+    selectedCategories: Set<String>,
+    onToggleCategory: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Filtrar gastos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                TextButton(onClick = onClear) { Text("Limpiar") }
+            }
+            Text(
+                "Período",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+            )
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DateRangeFilter.entries.filter { it != DateRangeFilter.SPECIFIC_MONTH }.forEach { option ->
+                    FilterChip(
+                        selected = option == dateRange,
+                        onClick = { onDateRangeChange(option) },
+                        label = { Text(option.label) },
+                    )
+                }
+            }
+            if (availableMonths.isNotEmpty()) {
+                Text(
+                    "Otro mes",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+                )
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    availableMonths.forEach { month ->
+                        val selected = dateRange == DateRangeFilter.SPECIFIC_MONTH && month == specificMonth
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onSelectMonth(month) },
+                            label = { Text(month.format(monthChipFormatter).replaceFirstChar { it.uppercase() }) },
+                        )
+                    }
+                }
+            }
+            Text(
+                "Categoría",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
+            )
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Category.entries.forEach { option ->
+                    val selected = option.id in selectedCategories
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onToggleCategory(option.id) },
+                        label = { Text(option.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
+                            selectedLabelColor = option.brandColor(),
+                        ),
+                    )
+                }
+            }
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) {
+                Text("Aplicar")
             }
         }
     }
@@ -557,8 +724,8 @@ private fun ExpenseRow(
     onEnterSelection: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var isEditing by remember(expense.id) { mutableStateOf(false) }
-    var confirmingDelete by remember(expense.id) { mutableStateOf(false) }
+    var isEditing by rememberSaveable(expense.id) { mutableStateOf(false) }
+    var confirmingDelete by rememberSaveable(expense.id) { mutableStateOf(false) }
 
     if (confirmingDelete) {
         AlertDialog(
@@ -621,6 +788,8 @@ private fun ExpenseRow(
                             expense.merchant,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             relativeDay(expense.occurredAt),
@@ -657,16 +826,18 @@ private fun ExpenseInlineEditForm(
     onCancel: () -> Unit,
     onSave: (amount: Long, merchant: String, category: Category) -> Unit,
 ) {
-    var amountText by remember { mutableStateOf(expense.amount.toString()) }
-    var merchantText by remember { mutableStateOf(expense.merchant) }
-    var category by remember { mutableStateOf(Category.fromId(expense.categoryId)) }
+    var amountText by rememberSaveable { mutableStateOf(expense.amount.toString()) }
+    var merchantText by rememberSaveable { mutableStateOf(expense.merchant) }
+    var categoryId by rememberSaveable { mutableStateOf(expense.categoryId) }
+    val category = Category.fromId(categoryId)
 
     Text("Editar gasto", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     OutlinedTextField(
         value = amountText,
-        onValueChange = { amountText = it.filter(Char::isDigit) },
+        onValueChange = { amountText = sanitizeAmountInput(it) },
         label = { Text("Monto (₲)") },
         singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
     )
     OutlinedTextField(
@@ -684,7 +855,7 @@ private fun ExpenseInlineEditForm(
             val selected = option == category
             FilterChip(
                 selected = selected,
-                onClick = { category = option },
+                onClick = { categoryId = option.id },
                 label = { Text(option.label) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
@@ -739,7 +910,7 @@ private fun TrayScreen() {
                 style = MaterialTheme.typography.titleMedium,
             )
         }
-        items(pending.take(visibleCount)) { candidate -> PendingCard(candidate) }
+        items(pending.take(visibleCount), key = { it.id }) { candidate -> PendingCard(candidate) }
 
         if (visibleCount < pending.size) {
             item {
@@ -755,7 +926,7 @@ private fun TrayScreen() {
 @Composable
 private fun PendingCard(candidate: ExpenseCandidate) {
     val scope = rememberCoroutineScope()
-    var isEditing by remember(candidate.id) { mutableStateOf(false) }
+    var isEditing by rememberSaveable(candidate.id) { mutableStateOf(false) }
 
     Card(
         Modifier.fillMaxWidth(),
@@ -798,7 +969,13 @@ private fun PendingCardSummary(
         CategoryAvatar(category)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(candidate.merchant, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                candidate.merchant,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 candidate.sourceApp.orEmpty(),
                 style = MaterialTheme.typography.bodySmall,
@@ -856,16 +1033,18 @@ private fun InlineEditForm(
     onCancel: () -> Unit,
     onSave: (amount: Long, merchant: String, category: Category) -> Unit,
 ) {
-    var amountText by remember { mutableStateOf(candidate.amount.toString()) }
-    var merchantText by remember { mutableStateOf(candidate.merchant) }
-    var category by remember { mutableStateOf(Category.fromId(candidate.categorySuggestion)) }
+    var amountText by rememberSaveable { mutableStateOf(candidate.amount.toString()) }
+    var merchantText by rememberSaveable { mutableStateOf(candidate.merchant) }
+    var categoryId by rememberSaveable { mutableStateOf(candidate.categorySuggestion) }
+    val category = Category.fromId(categoryId)
 
     Text("Editar gasto", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     OutlinedTextField(
         value = amountText,
-        onValueChange = { amountText = it.filter(Char::isDigit) },
+        onValueChange = { amountText = sanitizeAmountInput(it) },
         label = { Text("Monto (₲)") },
         singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
     )
     OutlinedTextField(
@@ -883,7 +1062,7 @@ private fun InlineEditForm(
             val selected = option == category
             FilterChip(
                 selected = selected,
-                onClick = { category = option },
+                onClick = { categoryId = option.id },
                 label = { Text(option.label) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
@@ -1010,7 +1189,13 @@ private fun ActivityRow(entry: ActivityEntry) {
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(activityLabel(entry.type), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            Text(entry.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                entry.summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Text(time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
