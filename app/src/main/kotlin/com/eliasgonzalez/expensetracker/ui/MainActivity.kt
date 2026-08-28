@@ -64,6 +64,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -91,7 +92,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -378,12 +382,25 @@ private fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) {
  * QuickAddOverlayService) - mismo RegisterExpense por debajo, la única
  * diferencia real es `source = MANUAL` en vez de `QUICK_TILE`.
  */
+/** Label de un campo obligatorio con un asterisco rojo al final. */
+@Composable
+private fun RequiredFieldLabel(text: String) {
+    Text(
+        buildAnnotatedString {
+            append(text)
+            append(" ")
+            withStyle(SpanStyle(color = MaterialTheme.colorScheme.error)) { append("*") }
+        }
+    )
+}
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun ManualAddSheet(onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var amountText by remember { mutableStateOf("") }
     var merchantText by remember { mutableStateOf("") }
+    var descriptionText by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(Category.OTHER) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -392,7 +409,7 @@ private fun ManualAddSheet(onDismiss: () -> Unit) {
             OutlinedTextField(
                 value = amountText,
                 onValueChange = { amountText = sanitizeAmountInput(it) },
-                label = { Text("Monto (₲)") },
+                label = { RequiredFieldLabel("Monto (₲)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.padding(top = 16.dp).fillMaxWidth(),
@@ -400,8 +417,16 @@ private fun ManualAddSheet(onDismiss: () -> Unit) {
             OutlinedTextField(
                 value = merchantText,
                 onValueChange = { merchantText = it },
-                label = { Text("Comercio") },
+                label = { RequiredFieldLabel("Comercio") },
                 singleLine = true,
+                modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = descriptionText,
+                onValueChange = { descriptionText = it },
+                label = { Text("Descripción") },
+                minLines = 2,
+                maxLines = 4,
                 modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
             )
             Text(
@@ -438,6 +463,7 @@ private fun ManualAddSheet(onDismiss: () -> Unit) {
                                 amount = amount,
                                 merchant = merchantText,
                                 categoryId = category.id,
+                                description = descriptionText.trim(),
                                 occurredAt = now,
                                 createdAt = now,
                                 source = ExpenseSource.MANUAL,
@@ -828,6 +854,11 @@ private fun ExpenseRow(
     val scope = rememberCoroutineScope()
     var isEditing by rememberSaveable(expense.id) { mutableStateOf(false) }
     var confirmingDelete by rememberSaveable(expense.id) { mutableStateOf(false) }
+    var showingDetail by rememberSaveable(expense.id) { mutableStateOf(false) }
+
+    if (showingDetail) {
+        ExpenseDetailDialog(expense = expense, onDismiss = { showingDetail = false })
+    }
 
     if (confirmingDelete) {
         AlertDialog(
@@ -852,7 +883,12 @@ private fun ExpenseRow(
         Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = { if (selectionMode) onToggleSelect() },
+                onClick = {
+                    when {
+                        selectionMode -> onToggleSelect()
+                        !isEditing -> showingDetail = true
+                    }
+                },
                 onLongClick = { if (!selectionMode) onEnterSelection() },
             ),
         shape = RoundedCornerShape(16.dp),
@@ -870,9 +906,9 @@ private fun ExpenseRow(
                 ExpenseInlineEditForm(
                     expense = expense,
                     onCancel = { isEditing = false },
-                    onSave = { amount, merchant, category ->
+                    onSave = { amount, merchant, category, description ->
                         scope.launch {
-                            ServiceLocator.get().editExpense(expense.id, amount, merchant, category.id)
+                            ServiceLocator.get().editExpense(expense.id, amount, merchant, category.id, description)
                         }
                         isEditing = false
                     },
@@ -926,10 +962,11 @@ private fun ExpenseRow(
 private fun ExpenseInlineEditForm(
     expense: Expense,
     onCancel: () -> Unit,
-    onSave: (amount: Long, merchant: String, category: Category) -> Unit,
+    onSave: (amount: Long, merchant: String, category: Category, description: String) -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf(expense.amount.toString()) }
     var merchantText by rememberSaveable { mutableStateOf(expense.merchant) }
+    var descriptionText by rememberSaveable { mutableStateOf(expense.description) }
     var categoryId by rememberSaveable { mutableStateOf(expense.categoryId) }
     val category = Category.fromId(categoryId)
 
@@ -937,7 +974,7 @@ private fun ExpenseInlineEditForm(
     OutlinedTextField(
         value = amountText,
         onValueChange = { amountText = sanitizeAmountInput(it) },
-        label = { Text("Monto (₲)") },
+        label = { RequiredFieldLabel("Monto (₲)") },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
@@ -945,8 +982,16 @@ private fun ExpenseInlineEditForm(
     OutlinedTextField(
         value = merchantText,
         onValueChange = { merchantText = it },
-        label = { Text("Comercio") },
+        label = { RequiredFieldLabel("Comercio") },
         singleLine = true,
+        modifier = Modifier.padding(top = 10.dp).fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = descriptionText,
+        onValueChange = { descriptionText = it },
+        label = { Text("Descripción") },
+        minLines = 2,
+        maxLines = 4,
         modifier = Modifier.padding(top = 10.dp).fillMaxWidth(),
     )
     Row(
@@ -975,11 +1020,79 @@ private fun ExpenseInlineEditForm(
             onClick = {
                 val amount = amountText.toLongOrNull() ?: 0
                 if (amount <= 0 || merchantText.isBlank()) return@Button
-                onSave(amount, merchantText, category)
+                onSave(amount, merchantText, category, descriptionText.trim())
             },
             modifier = Modifier.weight(1f),
         ) { Text("Guardar") }
     }
+}
+
+/**
+ * Detalle completo de un gasto - la fila de la lista solo muestra comercio,
+ * dia relativo y monto (eso no cambia); acá se ve todo lo demás (categoría,
+ * fecha y hora exactas, origen y la descripción libre si tiene una).
+ */
+@Composable
+private fun ExpenseDetailDialog(expense: Expense, onDismiss: () -> Unit) {
+    val category = Category.fromId(expense.categoryId)
+    val dateFormat = remember {
+        java.text.SimpleDateFormat("d 'de' MMMM yyyy, HH:mm", java.util.Locale("es", "PY"))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CategoryAvatar(category, size = 36.dp)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(expense.merchant, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        category.label,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        text = {
+            Column {
+                Text(
+                    "₲%,d".format(expense.amount),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    dateFormat.format(java.util.Date(expense.occurredAt)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    when (expense.source) {
+                        ExpenseSource.MANUAL -> "Cargado manualmente"
+                        ExpenseSource.QUICK_TILE -> "Cargado desde acceso rápido"
+                        ExpenseSource.NOTIFICATION -> "Detectado desde notificación"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                Text(
+                    "Descripción",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    expense.description.ifBlank { "Sin descripción" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cerrar") }
+        },
+    )
 }
 
 // ---------------------------------------------------------------------

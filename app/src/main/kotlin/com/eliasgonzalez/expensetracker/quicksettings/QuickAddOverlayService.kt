@@ -16,6 +16,7 @@ import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -223,20 +224,30 @@ class QuickAddOverlayService : Service() {
             elevation = dp(8).toFloat()
         }
 
-        // Manija de arrastre - mismo lenguaje visual que el drag handle de
-        // los ModalBottomSheet de Material3 usados en el resto de la app.
-        val dragHandle = View(this).apply {
+        // Manija de arrastre - la barrita visible es angosta (mismo lenguaje
+        // visual que el drag handle de los ModalBottomSheet de Material3),
+        // pero el área táctil real es un contenedor más alto y ancho que la
+        // envuelve: tocar/arrastrar justo esos 4dp de línea era muy difícil
+        // al primer intento.
+        val dragHandleBar = View(this).apply {
             background = GradientDrawable().apply {
                 cornerRadius = dp(2).toFloat()
                 setColor(colors.dragHandle)
             }
         }
-        attachDragHandling(dragHandle)
+        val dragHandleTouchArea = FrameLayout(this).apply {
+            addView(
+                dragHandleBar,
+                FrameLayout.LayoutParams(dp(36), dp(4)).apply {
+                    gravity = Gravity.CENTER
+                },
+            )
+        }
+        attachDragHandling(dragHandleTouchArea)
         card.addView(
-            dragHandle,
-            LinearLayout.LayoutParams(dp(36), dp(4)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(14)
+            dragHandleTouchArea,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32)).apply {
+                bottomMargin = dp(6)
             },
         )
 

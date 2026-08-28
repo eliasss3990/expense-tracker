@@ -14,9 +14,17 @@ class EditExpense(
         amount: Long,
         merchant: String,
         categoryId: String,
+        description: String? = null,
     ) {
         val expense = expenses.findById(expenseId) ?: return
-        expenses.update(expense.copy(amount = amount, merchant = merchant, categoryId = categoryId))
+        expenses.update(
+            expense.copy(
+                amount = amount,
+                merchant = merchant,
+                categoryId = categoryId,
+                description = description ?: expense.description,
+            )
+        )
         activity.record(
             ActivityEntry(
                 type = ActivityType.EXPENSE_EDITED,
