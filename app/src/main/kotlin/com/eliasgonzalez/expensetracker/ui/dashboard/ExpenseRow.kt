@@ -50,7 +50,7 @@ import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.RequiredFieldLabel
 import com.eliasgonzalez.expensetracker.ui.common.relativeDay
-import com.eliasgonzalez.expensetracker.ui.sanitizeAmountInput
+import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
 import com.eliasgonzalez.expensetracker.ui.theme.brandColor
 import kotlinx.coroutines.launch
 

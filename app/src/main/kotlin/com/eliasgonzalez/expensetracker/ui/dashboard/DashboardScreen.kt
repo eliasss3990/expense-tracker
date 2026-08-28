@@ -43,13 +43,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.model.Category
-import com.eliasgonzalez.expensetracker.ui.DateRangeFilter
-import com.eliasgonzalez.expensetracker.ui.availableMonths
+import com.eliasgonzalez.expensetracker.domain.filter.DateRangeFilter
+import com.eliasgonzalez.expensetracker.domain.filter.availableMonths
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.EXPENSES_PAGE_SIZE
 import com.eliasgonzalez.expensetracker.ui.common.EmptyState
 import com.eliasgonzalez.expensetracker.ui.common.SectionCard
-import com.eliasgonzalez.expensetracker.ui.matchesDateRange
+import com.eliasgonzalez.expensetracker.domain.filter.matchesDateRange
 import com.eliasgonzalez.expensetracker.ui.theme.MoneyDisplayStyle
 import com.eliasgonzalez.expensetracker.ui.theme.brandColor
 import kotlinx.coroutines.launch
@@ -67,7 +67,7 @@ internal fun isInCurrentMonth(epochMillis: Long): Boolean {
 @Composable
 internal fun DashboardScreen() {
     val scope = rememberCoroutineScope()
-    val expenses by ServiceLocator.get().expenseRepository.expenses.collectAsState()
+    val expenses by ServiceLocator.get().observeExpenses().collectAsState()
     val sortedExpenses = remember(expenses) { expenses.sortedByDescending { it.createdAt } }
     var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }

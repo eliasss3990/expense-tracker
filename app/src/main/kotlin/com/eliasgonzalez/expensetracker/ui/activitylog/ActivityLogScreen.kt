@@ -78,7 +78,7 @@ internal fun activityLabel(type: ActivityType): String = when (type) {
 
 @Composable
 internal fun ActivityScreen() {
-    val entries by ServiceLocator.get().activityRepository.recent.collectAsState()
+    val entries by ServiceLocator.get().observeActivity().collectAsState()
     var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
 
     if (entries.isEmpty()) {

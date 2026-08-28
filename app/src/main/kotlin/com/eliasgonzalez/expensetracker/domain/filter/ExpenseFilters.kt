@@ -1,4 +1,4 @@
-package com.eliasgonzalez.expensetracker.ui
+package com.eliasgonzalez.expensetracker.domain.filter
 
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import java.time.Instant

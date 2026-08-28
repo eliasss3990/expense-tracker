@@ -115,7 +115,7 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
     var destination by remember { mutableStateOf(Destination.DASHBOARD) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val candidates by ServiceLocator.get().candidateRepository.candidates.collectAsState()
+    val candidates by ServiceLocator.get().observeCandidates().collectAsState()
     val pendingCount = candidates.count { it.status == CandidateStatus.PENDING }
 
     val currentVersion = remember {

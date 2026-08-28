@@ -20,7 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.domain.model.Category
-import com.eliasgonzalez.expensetracker.ui.DateRangeFilter
+import com.eliasgonzalez.expensetracker.domain.filter.DateRangeFilter
 import com.eliasgonzalez.expensetracker.ui.theme.brandColor
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
