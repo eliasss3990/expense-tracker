@@ -106,6 +106,8 @@ import java.util.Locale
 
 private enum class Destination(val label: String) { DASHBOARD("Dashboard"), TRAY("Bandeja"), ACTIVITY("Actividad") }
 
+private const val EXPENSES_PAGE_SIZE = 20
+
 class MainActivity : ComponentActivity() {
     // Estado a nivel Activity (no de Compose) para que onResume() lo pueda
     // actualizar de forma confiable. Usar LocalLifecycleOwner de Compose acá
@@ -349,6 +351,8 @@ private fun isInCurrentMonth(epochMillis: Long): Boolean {
 @Composable
 private fun DashboardScreen() {
     val expenses by ServiceLocator.get().expenseRepository.expenses.collectAsState()
+    val sortedExpenses = remember(expenses) { expenses.sortedByDescending { it.createdAt } }
+    var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
     val thisMonth = remember(expenses) { expenses.filter { isInCurrentMonth(it.occurredAt) } }
     val total = thisMonth.sumOf { it.amount }
     val average = if (thisMonth.isNotEmpty()) total / thisMonth.size else 0
@@ -374,7 +378,7 @@ private fun DashboardScreen() {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -413,7 +417,16 @@ private fun DashboardScreen() {
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
-        items(expenses.take(20)) { expense -> ExpenseRow(expense) }
+        items(sortedExpenses.take(visibleCount)) { expense -> ExpenseRow(expense) }
+
+        if (visibleCount < sortedExpenses.size) {
+            item {
+                TextButton(
+                    onClick = { visibleCount += EXPENSES_PAGE_SIZE },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Cargar más") }
+            }
+        }
     }
 }
 
@@ -525,6 +538,7 @@ private fun ExpenseRow(expense: Expense) {
 private fun TrayScreen() {
     val candidates by ServiceLocator.get().candidateRepository.candidates.collectAsState()
     val pending = remember(candidates) { candidates.filter { it.status == CandidateStatus.PENDING } }
+    var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
 
     if (pending.isEmpty()) {
         EmptyState(
@@ -537,7 +551,7 @@ private fun TrayScreen() {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -546,7 +560,16 @@ private fun TrayScreen() {
                 style = MaterialTheme.typography.titleMedium,
             )
         }
-        items(pending) { candidate -> PendingCard(candidate) }
+        items(pending.take(visibleCount)) { candidate -> PendingCard(candidate) }
+
+        if (visibleCount < pending.size) {
+            item {
+                TextButton(
+                    onClick = { visibleCount += EXPENSES_PAGE_SIZE },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Cargar más") }
+            }
+        }
     }
 }
 
@@ -737,6 +760,7 @@ private fun activityLabel(type: ActivityType): String = when (type) {
 @Composable
 private fun ActivityScreen() {
     val entries by ServiceLocator.get().activityRepository.recent.collectAsState()
+    var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
 
     if (entries.isEmpty()) {
         EmptyState(
@@ -747,13 +771,14 @@ private fun ActivityScreen() {
         return
     }
 
-    val grouped = remember(entries) {
-        entries.groupBy { Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate() }
+    val visibleEntries = remember(entries, visibleCount) { entries.take(visibleCount) }
+    val grouped = remember(visibleEntries) {
+        visibleEntries.groupBy { Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate() }
     }
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         grouped.forEach { (date, dayEntries) ->
@@ -770,6 +795,15 @@ private fun ActivityScreen() {
                 )
             }
             items(dayEntries) { entry -> ActivityRow(entry) }
+        }
+
+        if (visibleCount < entries.size) {
+            item {
+                TextButton(
+                    onClick = { visibleCount += EXPENSES_PAGE_SIZE },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Cargar más") }
+            }
         }
     }
 }
