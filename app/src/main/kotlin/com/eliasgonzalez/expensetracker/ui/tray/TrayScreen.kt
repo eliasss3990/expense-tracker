@@ -55,13 +55,13 @@ import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.EXPENSES_PAGE_SIZE
 import com.eliasgonzalez.expensetracker.ui.common.EmptyState
-import com.eliasgonzalez.expensetracker.ui.sanitizeAmountInput
+import com.eliasgonzalez.expensetracker.domain.sanitizeAmountInput
 import com.eliasgonzalez.expensetracker.ui.theme.brandColor
 import kotlinx.coroutines.launch
 
 @Composable
 internal fun TrayScreen() {
-    val candidates by ServiceLocator.get().candidateRepository.candidates.collectAsState()
+    val candidates by ServiceLocator.get().observeCandidates().collectAsState()
     val pending = remember(candidates) { candidates.filter { it.status == CandidateStatus.PENDING } }
     var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
 

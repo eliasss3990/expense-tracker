@@ -14,6 +14,10 @@ import com.eliasgonzalez.expensetracker.domain.usecase.DeleteExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.EditCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.EditExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.ExportBackup
+import com.eliasgonzalez.expensetracker.domain.usecase.FindPendingCandidate
+import com.eliasgonzalez.expensetracker.domain.usecase.ObserveActivity
+import com.eliasgonzalez.expensetracker.domain.usecase.ObserveCandidates
+import com.eliasgonzalez.expensetracker.domain.usecase.ObserveExpenses
 import com.eliasgonzalez.expensetracker.domain.usecase.RegisterExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.RejectCandidate
 import kotlinx.coroutines.CoroutineScope
@@ -36,9 +40,13 @@ class AppContainer(context: Context) {
     private val localCandidateRepository = LocalCandidateRepository(dbHelper)
     private val localActivityRepository = LocalActivityRepository(dbHelper)
 
-    val expenseRepository: ExpenseRepository = localExpenseRepository
-    val candidateRepository: CandidateRepository = localCandidateRepository
-    val activityRepository: ActivityRepository = localActivityRepository
+    // Privados a propósito: la UI no debería tener una referencia directa
+    // a un repositorio (eso le permitiría leer o mutar salteándose los
+    // casos de uso). Lecturas reactivas se exponen vía los Observe* de
+    // abajo; escrituras, vía cada caso de uso puntual.
+    private val expenseRepository: ExpenseRepository = localExpenseRepository
+    private val candidateRepository: CandidateRepository = localCandidateRepository
+    private val activityRepository: ActivityRepository = localActivityRepository
 
     val registerExpense = RegisterExpense(expenseRepository, activityRepository)
     val createCandidate = CreateCandidate(candidateRepository, activityRepository)
@@ -48,6 +56,10 @@ class AppContainer(context: Context) {
     val editExpense = EditExpense(expenseRepository, activityRepository)
     val deleteExpense = DeleteExpense(expenseRepository, activityRepository)
     val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository)
+    val observeExpenses = ObserveExpenses(expenseRepository)
+    val observeCandidates = ObserveCandidates(candidateRepository)
+    val observeActivity = ObserveActivity(activityRepository)
+    val findPendingCandidate = FindPendingCandidate(candidateRepository)
 
     init {
         appScope.launch {

@@ -1,4 +1,4 @@
-package com.eliasgonzalez.expensetracker.ui
+package com.eliasgonzalez.expensetracker.domain
 
 private const val MAX_AMOUNT_DIGITS = 15
 

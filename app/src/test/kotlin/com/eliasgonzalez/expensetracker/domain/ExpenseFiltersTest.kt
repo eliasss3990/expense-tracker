@@ -1,4 +1,4 @@
-package com.eliasgonzalez.expensetracker.ui
+package com.eliasgonzalez.expensetracker.domain
 
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
