@@ -45,4 +45,37 @@ class UpdateCheckerTest {
         assertFalse(isNewerVersion("poc", "0.0.0"))
         assertFalse(isNewerVersion("", ""))
     }
+
+    // --- Regresion (hallazgo de auditoria, 2026-08-28): un tag remoto
+    // con sufijo de pre-release (ej. "-beta.1") se comparaba mal - el
+    // sufijo se colaba dentro de un segmento normal via toIntOrNull()->0,
+    // "corriendo" la cuenta de segmentos y dando un falso "hay
+    // actualizacion" aunque el remoto fuera la misma version o un beta
+    // mas viejo que la version estable ya instalada.
+
+    @Test
+    fun `un pre-release remoto con el mismo nucleo que la version actual no es mas nueva`() {
+        assertFalse(isNewerVersion("1.2.0-beta.1", "1.2.0"))
+    }
+
+    @Test
+    fun `un pre-release remoto con nucleo menor tampoco es mas nueva`() {
+        assertFalse(isNewerVersion("1.1.0-beta.1", "1.2.0"))
+    }
+
+    @Test
+    fun `un pre-release remoto con nucleo mayor si es mas nueva (el nucleo manda)`() {
+        assertTrue(isNewerVersion("1.3.0-beta.1", "1.2.0"))
+    }
+
+    @Test
+    fun `pasar de un pre-release instalado al release estable del mismo nucleo cuenta como actualizacion`() {
+        assertTrue(isNewerVersion("1.2.0", "1.2.0-beta.1"))
+    }
+
+    @Test
+    fun `dos pre-release del mismo nucleo no se consideran mas nuevos entre si`() {
+        assertFalse(isNewerVersion("1.2.0-beta.1", "1.2.0-beta.2"))
+        assertFalse(isNewerVersion("1.2.0-beta.2", "1.2.0-beta.1"))
+    }
 }

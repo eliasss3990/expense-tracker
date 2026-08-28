@@ -12,7 +12,12 @@ class GenericPurchaseParserTest {
         title: String = "",
         text: String = "",
         bigText: String = "",
-        packageName: String = "com.example.somebank",
+        // Paquete de confianza por default (Google Wallet) - GenericPurchaseParser
+        // ahora exige que el paquete este en su lista blanca (ver
+        // TRUSTED_PACKAGES), asi que todos los tests de parseo de esta
+        // clase necesitan un paquete confiable salvo los que prueban
+        // explicitamente el rechazo de paquetes no confiables.
+        packageName: String = "com.google.android.apps.walletnfcrel",
         applicationName: String = "SomeBank",
     ) = NotificationContext(
         packageName = packageName,
@@ -318,5 +323,37 @@ class GenericPurchaseParserTest {
         val result = GenericPurchaseParser.parse(context)!!
         assertEquals(0.6, result.confidence, 0.0001)
         assertEquals("PYG", result.currency)
+    }
+
+    // ---------- lista blanca de paquetes (hallazgo de auditoria, 2026-08-28) ----------
+    //
+    // Antes, canHandle/parse aceptaban CUALQUIER paquete con tal de que
+    // el texto matcheara el patron de monto - cualquier app instalada
+    // (maliciosa o no) podia publicar una notificacion con pinta de
+    // "gasto detectado" y monto/comercio arbitrarios. Verificado
+    // revirtiendo el fix (sacando el chequeo `packageName in
+    // TRUSTED_PACKAGES` de canHandle y parse) - los 2 tests de abajo
+    // fallan como se espera. Con el fix, pasan.
+
+    @Test
+    fun `un paquete que no esta en la lista blanca no puede disparar un candidato, aunque el texto matchee perfecto`() {
+        val context = notification(
+            text = "Compraste Gs. 5.000.000 en Comercio Falso S.A.",
+            packageName = "com.attacker.fakebank",
+        )
+
+        assertFalse(GenericPurchaseParser.canHandle(context))
+        assertNull(GenericPurchaseParser.parse(context))
+    }
+
+    @Test
+    fun `el paquete de Ueno Bank (ya confiable en UenoBankParser) tambien es aceptado aca`() {
+        val context = notification(
+            text = "Gs. 30.000 en Farmacia",
+            packageName = "py.com.elcomercio.retailbanking",
+        )
+
+        assertTrue(GenericPurchaseParser.canHandle(context))
+        assertEquals(30_000L, GenericPurchaseParser.parse(context)!!.amount)
     }
 }
