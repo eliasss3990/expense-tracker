@@ -114,6 +114,75 @@ class EditExpenseTest {
     }
 
     @Test
+    fun `actualiza la descripcion cuando se pasa un valor`() = runTest {
+        val expenses = FakeExpenseRepository()
+        val activity = FakeActivityRepository()
+        val editExpense = EditExpense(expenses, activity)
+
+        val id = expenses.save(
+            Expense(
+                amount = 50_000,
+                merchant = "Farmacia",
+                categoryId = "other",
+                description = "original",
+                occurredAt = 1L,
+                createdAt = 1L,
+                source = ExpenseSource.MANUAL,
+            )
+        )
+
+        editExpense(id, amount = 50_000, merchant = "Farmacia", categoryId = "other", description = "nueva descripcion")
+
+        assertEquals("nueva descripcion", expenses.findById(id)?.description)
+    }
+
+    @Test
+    fun `mantiene la descripcion existente si no se pasa una nueva`() = runTest {
+        val expenses = FakeExpenseRepository()
+        val activity = FakeActivityRepository()
+        val editExpense = EditExpense(expenses, activity)
+
+        val id = expenses.save(
+            Expense(
+                amount = 50_000,
+                merchant = "Farmacia",
+                categoryId = "other",
+                description = "no la toques",
+                occurredAt = 1L,
+                createdAt = 1L,
+                source = ExpenseSource.MANUAL,
+            )
+        )
+
+        editExpense(id, amount = 65_000, merchant = "Farmacia Central", categoryId = "health")
+
+        assertEquals("no la toques", expenses.findById(id)?.description)
+    }
+
+    @Test
+    fun `permite vaciar la descripcion pasando string vacio explicitamente`() = runTest {
+        val expenses = FakeExpenseRepository()
+        val activity = FakeActivityRepository()
+        val editExpense = EditExpense(expenses, activity)
+
+        val id = expenses.save(
+            Expense(
+                amount = 50_000,
+                merchant = "Farmacia",
+                categoryId = "other",
+                description = "algo",
+                occurredAt = 1L,
+                createdAt = 1L,
+                source = ExpenseSource.MANUAL,
+            )
+        )
+
+        editExpense(id, amount = 50_000, merchant = "Farmacia", categoryId = "other", description = "")
+
+        assertEquals("", expenses.findById(id)?.description)
+    }
+
+    @Test
     fun `permite editar categoryId a un valor invalido sin validar contra el enum Category`() = runTest {
         val expenses = FakeExpenseRepository()
         val activity = FakeActivityRepository()
