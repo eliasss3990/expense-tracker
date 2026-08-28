@@ -22,6 +22,9 @@
         <activity
             android:name=".ui.QuickAddActivity"
             android:exported="false"
+            android:allowEmbedded="true"
+            android:resizeableActivity="true"
+            android:documentLaunchMode="always"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <service

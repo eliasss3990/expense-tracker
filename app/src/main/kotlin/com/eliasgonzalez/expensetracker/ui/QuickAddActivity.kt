@@ -5,15 +5,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,12 +52,10 @@ class QuickAddActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                Surface {
-                    QuickAddScreen(
-                        editing = editingCandidate,
-                        onSave = { finish() },
-                    )
-                }
+                QuickAddScreen(
+                    editing = editingCandidate,
+                    onSave = { finish() },
+                )
             }
         }
     }
@@ -70,58 +73,71 @@ private fun QuickAddScreen(
     }
     val scope = rememberCoroutineScope()
 
-    Column(Modifier.padding(24.dp)) {
-        Text(if (editing != null) "Editar gasto" else "Nuevo gasto")
-        OutlinedTextField(
-            value = amountText,
-            onValueChange = { amountText = it.filter(Char::isDigit) },
-            label = { Text("Monto (₲)") },
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        OutlinedTextField(
-            value = merchantText,
-            onValueChange = { merchantText = it },
-            label = { Text("Comercio") },
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        Text("Categoría", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 16.dp))
-        Row(
-            Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Box(Modifier.fillMaxSize().padding(8.dp)) {
+        Card(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         ) {
-            Category.entries.forEach { option ->
-                FilterChip(
-                    selected = option == category,
-                    onClick = { category = option },
-                    label = { Text(option.label) },
+            Column(Modifier.padding(20.dp)) {
+                Text(if (editing != null) "Editar gasto" else "Nuevo gasto")
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it.filter(Char::isDigit) },
+                    label = { Text("Monto (₲)") },
+                    modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
                 )
-            }
-        }
-        Button(
-            onClick = {
-                val amount = amountText.toLongOrNull() ?: 0
-                if (amount <= 0 || merchantText.isBlank()) return@Button
-                scope.launch {
-                    val container = ServiceLocator.get()
-                    if (editing != null) {
-                        container.editCandidate(editing.id, amount, merchantText, category.id)
-                    } else {
-                        val now = System.currentTimeMillis()
-                        container.registerExpense(
-                            Expense(
-                                amount = amount,
-                                merchant = merchantText,
-                                categoryId = category.id,
-                                occurredAt = now,
-                                createdAt = now,
-                                source = ExpenseSource.QUICK_TILE,
-                            )
+                OutlinedTextField(
+                    value = merchantText,
+                    onValueChange = { merchantText = it },
+                    label = { Text("Comercio") },
+                    modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+                )
+                Text(
+                    "Categoría",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+                Row(
+                    Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Category.entries.forEach { option ->
+                        FilterChip(
+                            selected = option == category,
+                            onClick = { category = option },
+                            label = { Text(option.label) },
                         )
                     }
-                    onSave()
                 }
-            },
-            modifier = Modifier.padding(top = 20.dp),
-        ) { Text("Guardar") }
+                Button(
+                    onClick = {
+                        val amount = amountText.toLongOrNull() ?: 0
+                        if (amount <= 0 || merchantText.isBlank()) return@Button
+                        scope.launch {
+                            val container = ServiceLocator.get()
+                            if (editing != null) {
+                                container.editCandidate(editing.id, amount, merchantText, category.id)
+                            } else {
+                                val now = System.currentTimeMillis()
+                                container.registerExpense(
+                                    Expense(
+                                        amount = amount,
+                                        merchant = merchantText,
+                                        categoryId = category.id,
+                                        occurredAt = now,
+                                        createdAt = now,
+                                        source = ExpenseSource.QUICK_TILE,
+                                    )
+                                )
+                            }
+                            onSave()
+                        }
+                    },
+                    modifier = Modifier.padding(top = 20.dp).fillMaxWidth(),
+                ) { Text("Guardar") }
+            }
+        }
     }
 }
