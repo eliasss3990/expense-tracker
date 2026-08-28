@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.ui
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -56,6 +58,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -103,6 +107,9 @@ import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.notification.isNotificationListenerEnabled
+import com.eliasgonzalez.expensetracker.update.ReleaseInfo
+import com.eliasgonzalez.expensetracker.update.UpdateChecker
+import com.eliasgonzalez.expensetracker.update.isNewerVersion
 import com.eliasgonzalez.expensetracker.ui.theme.ExpenseTrackerTheme
 import com.eliasgonzalez.expensetracker.ui.theme.MoneyDisplayStyle
 import com.eliasgonzalez.expensetracker.ui.theme.brandColor
@@ -160,8 +167,37 @@ class MainActivity : ComponentActivity() {
 private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
     var destination by remember { mutableStateOf(Destination.DASHBOARD) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val candidates by ServiceLocator.get().candidateRepository.candidates.collectAsState()
     val pendingCount = candidates.count { it.status == CandidateStatus.PENDING }
+
+    val currentVersion = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "0.0.0"
+    }
+    var availableUpdate by remember { mutableStateOf<ReleaseInfo?>(null) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+
+    suspend fun checkForUpdate(showUpToDateMessage: Boolean) {
+        val release = UpdateChecker.fetchLatestRelease()
+        when {
+            release == null && showUpToDateMessage ->
+                Toast.makeText(context, "No se pudo comprobar actualizaciones", Toast.LENGTH_SHORT).show()
+            release != null && isNewerVersion(release.versionName, currentVersion) -> {
+                availableUpdate = release
+                if (showUpToDateMessage) {
+                    Toast.makeText(context, "Hay una nueva versión: v${release.versionName}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            showUpToDateMessage ->
+                Toast.makeText(context, "Ya tenés la última versión", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Chequeo silencioso al abrir - si falla (repo privado, sin
+    // internet) no molesta con ningún mensaje, solo no muestra el banner.
+    LaunchedEffect(Unit) { checkForUpdate(showUpToDateMessage = false) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -210,6 +246,18 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
                             Icon(Icons.Filled.FileDownload, contentDescription = "Exportar backup")
                         }
                     }
+                    IconButton(onClick = { showOverflowMenu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Más opciones")
+                    }
+                    DropdownMenu(expanded = showOverflowMenu, onDismissRequest = { showOverflowMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Buscar actualizaciones") },
+                            onClick = {
+                                showOverflowMenu = false
+                                scope.launch { checkForUpdate(showUpToDateMessage = true) }
+                            },
+                        )
+                    }
                 },
             )
         },
@@ -241,6 +289,12 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            availableUpdate?.let { release ->
+                UpdateAvailableBanner(
+                    release = release,
+                    onDismiss = { availableUpdate = null },
+                )
+            }
             if (!listenerEnabled.value) {
                 NotificationAccessBanner()
             }
@@ -281,6 +335,39 @@ private fun NotificationAccessBanner() {
             TextButton(onClick = {
                 context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
             }) { Text("Activar") }
+        }
+    }
+}
+
+@Composable
+private fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    Surface(
+        Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.primaryContainer,
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Hay una nueva versión disponible",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "v${release.versionName} — tocá para descargarla",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            TextButton(onClick = onDismiss) { Text("Ahora no") }
+            TextButton(onClick = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.htmlUrl)))
+            }) { Text("Ver") }
         }
     }
 }
