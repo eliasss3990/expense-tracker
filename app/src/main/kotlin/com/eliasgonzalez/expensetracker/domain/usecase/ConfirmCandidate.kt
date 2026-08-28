@@ -7,19 +7,29 @@ import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Idempotente: si el candidato ya no esta PENDING, no hace nada - evita
  * duplicar el Expense si la accion llega dos veces.
+ *
+ * El chequeo de estado + la escritura van dentro de un Mutex (mismo
+ * motivo que CreateCandidate): sin esto, dos confirmaciones casi
+ * simultaneas del mismo candidato (ej. un doble tap accidental en la
+ * notificacion) leen PENDING antes de que cualquiera de las dos alcance
+ * a marcarlo ACCEPTED, y las dos terminan registrando un Expense.
  */
 class ConfirmCandidate(
     private val candidates: CandidateRepository,
     private val registerExpense: RegisterExpense,
     private val activity: ActivityRepository,
 ) {
-    suspend operator fun invoke(candidateId: Long): Long? {
-        val candidate = candidates.findById(candidateId) ?: return null
-        if (candidate.status != CandidateStatus.PENDING) return null
+    private val mutex = Mutex()
+
+    suspend operator fun invoke(candidateId: Long): Long? = mutex.withLock {
+        val candidate = candidates.findById(candidateId) ?: return@withLock null
+        if (candidate.status != CandidateStatus.PENDING) return@withLock null
 
         val now = System.currentTimeMillis()
         val expenseId = registerExpense(
@@ -44,6 +54,6 @@ class ConfirmCandidate(
                 summary = "${candidate.merchant} — ₲${"%,d".format(candidate.amount)}",
             )
         )
-        return expenseId
+        expenseId
     }
 }
