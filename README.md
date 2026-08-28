@@ -102,7 +102,7 @@ todo a mano en unas pocas líneas, sin la complejidad de un framework.
 ## Instalación
 
 **Uso normal (sin cable, sin compilar nada):** cada push a `main` pasa por
-CI (tests + build + E2E) y publica un APK firmado como GitHub Release. La
+CI (lint + tests + build) y publica un APK firmado como GitHub Release. La
 propia app chequea al abrir si hay una versión más nueva que la instalada
 y avisa con un banner; también se puede forzar el chequeo a mano desde el
 menú (⋮) del Dashboard. Para instalar por primera vez: descargar el APK
