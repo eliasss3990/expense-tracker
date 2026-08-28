@@ -263,13 +263,14 @@ class EditCandidateTest {
     }
 
     @Test
-    fun `condicion de carrera - dos ediciones concurrentes del mismo candidato pueden duplicar el gasto`() = runTest {
-        // BUG REAL, mismo patron que ConfirmCandidate/RejectCandidate: no hay mutex
-        // entre la lectura del estado PENDING y la escritura de EDITED. Con una
-        // escritura que tarda (delay simulando I/O real), dos ediciones concurrentes
-        // del mismo candidato pueden pasar ambas el chequeo antes de que cualquiera
-        // termine de persistir, generando dos Expense para un solo candidato.
-        // Ver EditCandidate.kt:21-22.
+    fun `condicion de carrera - dos ediciones concurrentes del mismo candidato NO duplican el gasto`() = runTest {
+        // Regresion: EditCandidate protege con un Mutex el tramo lectura del
+        // estado PENDING + escritura de EDITED (igual que ConfirmCandidate/
+        // RejectCandidate/CreateCandidate). Sin ese Mutex, con una escritura
+        // que tarda (delay simulando I/O real), dos ediciones concurrentes del
+        // mismo candidato pasaban ambas el chequeo antes de que cualquiera
+        // terminara de persistir, generando dos Expense para un solo candidato.
+        // Si alguien saca el Mutex de EditCandidate, este test vuelve a fallar.
         val realCandidates = FakeCandidateRepository()
         val delayedCandidates = DelayedUpdateCandidateRepositoryForEdit(realCandidates)
         val expenses = FakeExpenseRepository()
@@ -282,9 +283,7 @@ class EditCandidateTest {
         val second = async { editCandidate(candidateId, amount = 200L, merchant = "Edicion B") }
         val results = listOfNotNull(first.await(), second.await())
 
-        // Comportamiento actual (documentado, no corregido aqui): ambas ediciones
-        // concurrentes "ganan" la carrera y se generan dos Expense duplicados.
-        assertEquals(2, results.size)
-        assertEquals(2, expenses.expenses.value.size)
+        assertEquals(1, results.size)
+        assertEquals(1, expenses.expenses.value.size)
     }
 }

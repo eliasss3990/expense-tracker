@@ -149,13 +149,14 @@ class RejectCandidateTest {
     }
 
     @Test
-    fun `condicion de carrera - dos rechazos concurrentes del mismo candidato pueden duplicar la entrada de actividad`() = runTest {
-        // BUG REAL, mismo patron que en ConfirmCandidate: no hay proteccion (mutex)
-        // entre la lectura del estado PENDING y la escritura de REJECTED. Con una
-        // escritura que tarda (delay simulando I/O real), dos llamadas concurrentes
-        // al mismo candidato pueden pasar ambas el chequeo de estado antes de que
-        // cualquiera termine de persistir, y las dos registran actividad de rechazo.
-        // Ver RejectCandidate.kt:14-15.
+    fun `condicion de carrera - dos rechazos concurrentes del mismo candidato NO duplican la entrada de actividad`() = runTest {
+        // Regresion: RejectCandidate protege con un Mutex el tramo lectura del
+        // estado PENDING + escritura de REJECTED (ver RejectCandidate.kt). Sin
+        // ese Mutex, con una escritura que tarda (delay simulando I/O real),
+        // dos llamadas concurrentes al mismo candidato pasaban ambas el chequeo
+        // de estado antes de que cualquiera terminara de persistir, y las dos
+        // registraban actividad de rechazo. Si alguien saca el Mutex, este test
+        // vuelve a fallar.
         val realCandidates = FakeCandidateRepository()
         val delayedCandidates = DelayedUpdateCandidateRepositoryForReject(realCandidates)
         val activity = FakeActivityRepository()
@@ -168,9 +169,7 @@ class RejectCandidateTest {
         second.await()
 
         val rejectedEntries = activity.recent.value.filter { it.type == ActivityType.CANDIDATE_REJECTED }
-        // Comportamiento actual (documentado, no corregido aqui): la carrera produce
-        // dos entradas de actividad para el mismo candidato en lugar de una sola.
-        assertEquals(2, rejectedEntries.size)
+        assertEquals(1, rejectedEntries.size)
         assertEquals(CandidateStatus.REJECTED, realCandidates.findById(candidateId)?.status)
     }
 }

@@ -171,15 +171,12 @@ class ExportBackupTest {
     }
 
     @Test
-    fun `BUG REAL merchant con retorno de carro embebido produce JSON invalido`() = runTest {
-        // ExportBackup.q() solo escapa backslash, comilla doble y '\n'.
-        // No escapa otros caracteres de control obligatorios por RFC 8259
-        // (U+0000-U+001F), como '\r' (retorno de carro) o '\t' (tab).
-        // Ver ExportBackup.kt, funcion privada `String.q()`
-        // (ultimo `.replace("\n", "\\n")` sin un caso para '\r'/'\t'/etc).
-        // Este test documenta el bug: el JSON resultante es invalido segun
-        // el estandar porque contiene un '\r' crudo sin escapar dentro de
-        // un string. Se deja fallando a proposito como evidencia.
+    fun `regresion - merchant con retorno de carro embebido genera JSON valido`() = runTest {
+        // Bug encontrado y corregido: ExportBackup.q() solo escapaba backslash,
+        // comilla doble y '\n', dejando otros caracteres de control obligatorios
+        // por RFC 8259 (U+0000-U+001F) crudos dentro del string - '\r' rompia el
+        // JSON resultante. String.q() ahora escapa todo ese rango. Si alguien
+        // vuelve a acotar el escapado, este test vuelve a fallar.
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
@@ -204,17 +201,15 @@ class ExportBackupTest {
             assertEquals(merchantOriginal, first["merchant"])
         } catch (e: MiniJson.JsonParseException) {
             fail(
-                "BUG REAL: ExportBackup produjo JSON invalido para un merchant con " +
-                    "'\\r' embebido sin escapar. ExportBackup.kt (String.q()) solo " +
-                    "escapa \\, \" y \\n, pero no otros caracteres de control " +
-                    "requeridos por RFC 8259. Error del parser: ${e.message}"
+                "REGRESION: ExportBackup volvio a producir JSON invalido para un " +
+                    "merchant con '\\r' embebido. Error del parser: ${e.message}"
             )
         }
     }
 
     @Test
-    fun `BUG REAL merchant con tab embebido produce JSON invalido`() = runTest {
-        // Mismo bug que el retorno de carro, con tab.
+    fun `regresion - merchant con tab embebido genera JSON valido`() = runTest {
+        // Mismo caso que el retorno de carro, con tab - ver comentario de arriba.
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
@@ -239,10 +234,8 @@ class ExportBackupTest {
             assertEquals(merchantOriginal, first["merchant"])
         } catch (e: MiniJson.JsonParseException) {
             fail(
-                "BUG REAL: ExportBackup produjo JSON invalido para un merchant con " +
-                    "'\\t' embebido sin escapar. ExportBackup.kt (String.q()) solo " +
-                    "escapa \\, \" y \\n, pero no otros caracteres de control " +
-                    "requeridos por RFC 8259. Error del parser: ${e.message}"
+                "REGRESION: ExportBackup volvio a producir JSON invalido para un " +
+                    "merchant con '\\t' embebido. Error del parser: ${e.message}"
             )
         }
     }

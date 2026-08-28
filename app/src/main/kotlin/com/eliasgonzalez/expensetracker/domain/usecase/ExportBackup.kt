@@ -50,11 +50,29 @@ class ExportBackup(
         |$indent{"id": $id, "type": ${type.name.q()}, "expenseId": ${expenseId?.toString() ?: "null"}, "candidateId": ${candidateId?.toString() ?: "null"}, "timestamp": $timestamp, "summary": ${summary.q()}}
     """.trimMargin()
 
+    /**
+     * Escapa un string para JSON a mano (sin librería). Antes solo cubría
+     * backslash/comilla/\n - cualquier otro caracter de control (\r, \t,
+     * etc.) quedaba crudo dentro de las comillas y rompía el JSON
+     * resultante. RFC 8259 exige escapar TODO U+0000-U+001F.
+     */
     private fun String.q(): String {
-        val escaped = this
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
+        val escaped = buildString {
+            for (char in this@q) {
+                when (char) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> if (char.code < 0x20) {
+                        append("\\u%04x".format(char.code))
+                    } else {
+                        append(char)
+                    }
+                }
+            }
+        }
         return "\"$escaped\""
     }
 }

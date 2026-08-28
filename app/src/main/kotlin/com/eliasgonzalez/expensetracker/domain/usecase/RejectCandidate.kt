@@ -5,14 +5,25 @@ import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
+/**
+ * El chequeo de estado + la escritura van dentro de un Mutex (mismo
+ * motivo que CreateCandidate/ConfirmCandidate): sin esto, dos rechazos
+ * casi simultaneos del mismo candidato leen PENDING antes de que
+ * cualquiera de los dos alcance a marcarlo REJECTED, y quedan dos
+ * entradas de actividad para la misma accion.
+ */
 class RejectCandidate(
     private val candidates: CandidateRepository,
     private val activity: ActivityRepository,
 ) {
-    suspend operator fun invoke(candidateId: Long) {
-        val candidate = candidates.findById(candidateId) ?: return
-        if (candidate.status != CandidateStatus.PENDING) return
+    private val mutex = Mutex()
+
+    suspend operator fun invoke(candidateId: Long): Unit = mutex.withLock {
+        val candidate = candidates.findById(candidateId) ?: return@withLock
+        if (candidate.status != CandidateStatus.PENDING) return@withLock
 
         candidates.update(candidate.copy(status = CandidateStatus.REJECTED))
         activity.record(

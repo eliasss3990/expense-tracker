@@ -209,13 +209,14 @@ class ConfirmCandidateTest {
     }
 
     @Test
-    fun `condicion de carrera - dos confirmaciones concurrentes del mismo candidato pueden duplicar el gasto`() = runTest {
-        // BUG REAL: a diferencia de CreateCandidate (que usa Mutex), ConfirmCandidate
-        // no protege la seccion critica lectura-de-estado + escritura-de-estado.
-        // Con un repositorio cuya escritura tarda (delay simulando I/O real), dos
-        // llamadas concurrentes al mismo candidatoId leen PENDING antes de que
-        // cualquiera de las dos alcance a marcarlo ACCEPTED, y ambas terminan
-        // registrando un Expense. Ver ConfirmCandidate.kt:20-22.
+    fun `condicion de carrera - dos confirmaciones concurrentes del mismo candidato NO duplican el gasto`() = runTest {
+        // Regresion: ConfirmCandidate protege con un Mutex el tramo lectura del
+        // estado PENDING + escritura de ACCEPTED (igual que CreateCandidate). Sin
+        // ese Mutex, con un repositorio cuya escritura tarda (delay simulando
+        // I/O real), dos llamadas concurrentes al mismo candidatoId leian PENDING
+        // antes de que cualquiera de las dos alcanzara a marcarlo ACCEPTED, y
+        // ambas terminaban registrando un Expense. Si alguien saca el Mutex de
+        // ConfirmCandidate, este test vuelve a fallar.
         val realCandidates = FakeCandidateRepository()
         val delayedCandidates = DelayedUpdateCandidateRepositoryForConfirm(realCandidates)
         val (confirmCandidate, _, expenses) = buildUseCase(delayedCandidates)
@@ -225,14 +226,9 @@ class ConfirmCandidateTest {
         val second = async { confirmCandidate(candidateId) }
         val results = listOfNotNull(first.await(), second.await())
 
-        // Comportamiento actual (documentado, no corregido aqui): ambas llamadas
-        // "ganan" la carrera y se crean dos Expense para el mismo candidato.
-        assertEquals(2, results.size)
-        assertEquals(2, expenses.expenses.value.size)
-        assertTrue(
-            "Se esperaba que la carrera produjera un duplicado real (bug conocido)",
-            expenses.expenses.value.all { it.sourceReference == candidateId },
-        )
+        assertEquals(1, results.size)
+        assertEquals(1, expenses.expenses.value.size)
+        assertEquals(candidateId, expenses.expenses.value.single().sourceReference)
     }
 
     @Test
