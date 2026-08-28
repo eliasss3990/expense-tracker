@@ -1,7 +1,7 @@
 package com.eliasgonzalez.expensetracker.notification
 
 /**
- * Parser genérico de POC: no está atado a un banco específico.
+ * Parser genérico: no está atado a un banco específico.
  * Busca un patrón de monto (Gs./₲/PYG + número) en cualquier notificación
  * y, si lo encuentra, intenta extraer el comercio de un "en <comercio>".
  *
@@ -38,7 +38,7 @@ object GenericPurchaseParser : NotificationParser {
             merchantConfident = matchedMerchant != null,
             currency = "PYG",
             confidence = 0.6,
-            parserId = "generic-purchase-poc-v1",
+            parserId = "generic-purchase-v1",
         )
     }
 }
