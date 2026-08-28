@@ -91,6 +91,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
@@ -116,6 +119,7 @@ import java.util.Locale
 private enum class Destination(val label: String) { DASHBOARD("Dashboard"), TRAY("Bandeja"), ACTIVITY("Actividad") }
 
 private const val EXPENSES_PAGE_SIZE = 20
+private const val SPLASH_MIN_DURATION_MS = 2000L
 
 class MainActivity : ComponentActivity() {
     // Estado a nivel Activity (no de Compose) para que onResume() lo pueda
@@ -125,7 +129,19 @@ class MainActivity : ComponentActivity() {
     private val listenerEnabledState = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        // Sin esto el splash desaparece apenas se dibuja el primer frame -
+        // en un celular rápido dura una fracción de segundo, invisible.
+        // Se mantiene un mínimo de tiempo para que la marca realmente se vea.
+        var keepSplashOnScreen = true
+        splashScreen.setKeepOnScreenCondition { keepSplashOnScreen }
+        lifecycleScope.launch {
+            delay(SPLASH_MIN_DURATION_MS)
+            keepSplashOnScreen = false
+        }
+
         setContent {
             ExpenseTrackerTheme {
                 AppRoot(listenerEnabledState)

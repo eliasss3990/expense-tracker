@@ -1,0 +1,17 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp"
+    android:height="240dp"
+    android:viewportWidth="240"
+    android:viewportHeight="240">
+    <!-- Misma marca (moneda + check) del ícono, escalada 2x para el splash. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,120 A60,60 0 1,1 180,120 A60,60 0 1,1 60,120 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4338CA"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M90,122 L110,142 L160,88" />
+</vector>
