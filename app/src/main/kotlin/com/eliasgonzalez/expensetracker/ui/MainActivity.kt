@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -557,6 +558,26 @@ private fun ExpenseRow(
 ) {
     val scope = rememberCoroutineScope()
     var isEditing by remember(expense.id) { mutableStateOf(false) }
+    var confirmingDelete by remember(expense.id) { mutableStateOf(false) }
+
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("¿Eliminar gasto?") },
+            text = { Text("\"${expense.merchant}\" — ₲${"%,d".format(expense.amount)} se va a borrar. Esta acción no se puede deshacer.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingDelete = false
+                        scope.launch { ServiceLocator.get().deleteExpense(expense.id) }
+                    },
+                ) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) { Text("Cancelar") }
+            },
+        )
+    }
 
     Card(
         Modifier
@@ -616,7 +637,7 @@ private fun ExpenseRow(
                         IconButton(onClick = { isEditing = true }) {
                             Icon(Icons.Filled.Edit, contentDescription = "Editar gasto")
                         }
-                        IconButton(onClick = { scope.launch { ServiceLocator.get().deleteExpense(expense.id) } }) {
+                        IconButton(onClick = { confirmingDelete = true }) {
                             Icon(
                                 Icons.Filled.Delete,
                                 contentDescription = "Eliminar gasto",
