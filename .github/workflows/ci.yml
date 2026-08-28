@@ -39,7 +39,7 @@ jobs:
       - name: Instalar paquetes del SDK necesarios
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-37" "build-tools;37.0.0" > /dev/null
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
       - name: Lint
         run: ./gradlew lintDebug --console=plain
 
@@ -58,7 +58,7 @@ jobs:
       - name: Instalar paquetes del SDK necesarios
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-37" "build-tools;37.0.0" > /dev/null
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
       - name: Tests unitarios de dominio y UI
         run: ./gradlew testDebugUnitTest --console=plain
       - uses: actions/upload-artifact@v4
@@ -83,7 +83,7 @@ jobs:
       - name: Instalar paquetes del SDK necesarios
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-37" "build-tools;37.0.0" > /dev/null
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
       - name: Compilar APK debug
         run: ./gradlew assembleDebug --console=plain
 
@@ -102,7 +102,7 @@ jobs:
       - name: Instalar paquetes del SDK necesarios
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-37" "build-tools;37.0.0" > /dev/null
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
       - name: Habilitar KVM para el emulador
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

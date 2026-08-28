@@ -28,7 +28,7 @@ jobs:
       - name: Instalar paquetes del SDK necesarios
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-37" "build-tools;37.0.0" > /dev/null
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
 
       - name: Leer versionName de app/build.gradle.kts
         id: version
