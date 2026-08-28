@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
+import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import kotlinx.coroutines.async
@@ -393,6 +394,72 @@ class CreateCandidateTest {
         val results = jobs.awaitAll()
 
         assertTrue("A lo sumo un resultado no nulo esperado, hubo ${results.count { it != null }}", results.count { it != null } == 1)
+        assertEquals(1, candidates.candidates.value.size)
+    }
+
+    // --- Regresion (hallazgo de auditoria, 2026-08-28): findDuplicate no
+    // filtraba por status, asi que un candidato ya resuelto (ACCEPTED/
+    // REJECTED/EDITED) - que nunca se borra, queda en la lista para
+    // siempre - seguia "bloqueando" como si fuera un duplicado a una
+    // compra genuinamente distinta y posterior con el mismo monto y
+    // comercio (ej. dos cafes identicos en el mismo lugar el mismo dia).
+    // El segundo gasto real desaparecia en silencio, sin ningun error.
+    //
+    // Verificado revirtiendo el fix (sacando el `existing.status ==
+    // CandidateStatus.PENDING &&` del find en CreateCandidate.kt) - los
+    // 3 tests de abajo fallan como se espera. Con el fix, pasan.
+
+    @Test
+    fun `un candidato ya ACCEPTED no bloquea una compra distinta y posterior con el mismo monto y comercio`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+
+        val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
+        candidates.update(candidates.findById(firstId)!!.copy(status = CandidateStatus.ACCEPTED))
+
+        val secondId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_050L))
+
+        assertNotNull("La segunda compra, genuinamente distinta, no deberia perderse", secondId)
+        assertEquals(2, candidates.candidates.value.size)
+    }
+
+    @Test
+    fun `un candidato ya REJECTED no bloquea una compra distinta y posterior con el mismo monto y comercio`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+
+        val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
+        candidates.update(candidates.findById(firstId)!!.copy(status = CandidateStatus.REJECTED))
+
+        val secondId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_050L))
+
+        assertNotNull(secondId)
+        assertEquals(2, candidates.candidates.value.size)
+    }
+
+    @Test
+    fun `un candidato ya EDITED no bloquea una compra distinta y posterior con el mismo monto y comercio`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+
+        val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
+        candidates.update(candidates.findById(firstId)!!.copy(status = CandidateStatus.EDITED))
+
+        val secondId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_050L))
+
+        assertNotNull(secondId)
+        assertEquals(2, candidates.candidates.value.size)
+    }
+
+    @Test
+    fun `dos candidatos PENDING dentro de la ventana siguen dedupeando entre si (el fix no rompe el caso normal)`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+
+        createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))
+        val secondId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_050L))
+
+        assertNull(secondId)
         assertEquals(1, candidates.candidates.value.size)
     }
 }

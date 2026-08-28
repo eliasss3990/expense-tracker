@@ -8,6 +8,12 @@ on:
   pull_request:
     branches: [next, main]
 
+# Minimo privilegio a nivel workflow - ningun job de este archivo necesita
+# escribir nada (release.yml es el unico que escribe, y ya declara su
+# propio "permissions: contents: write" a nivel job).
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -25,9 +31,29 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Verificar rama de origen del PR
+        # HEAD_REF va por env, no interpolado directo en el script: el
+        # nombre de una rama lo elige quien abre el PR y las reglas de
+        # git permiten backticks/$()/;/&&/etc en un nombre de rama - una
+        # interpolacion directa de "${{ github.head_ref }}" acá adentro
+        # del bloque `run:` es una inyección de shell clásica y real
+        # (cualquiera podría abrir un PR desde una rama con un nombre
+        # armado para ejecutar comandos en el runner). Con env, el valor
+        # llega como texto plano a la shell, no como código.
+        #
+        # Ademas se exige que el PR venga del propio repo (no de un
+        # fork): antes, cualquiera podia nombrar su rama "next" o
+        # "hotfix/algo" y pasar este guard sin ser realmente la rama
+        # next real del proyecto ni una emergencia legitima.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          if [ "${{ github.head_ref }}" != "next" ] && [[ "${{ github.head_ref }}" != hotfix/* ]]; then
-            echo "::error::main solo acepta Pull Requests desde 'next' o desde una rama 'hotfix/*' (esta viene de '${{ github.head_ref }}')"
+          if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::main solo acepta Pull Requests desde ramas de este mismo repositorio, no de forks (viene de '$HEAD_REPO')"
+            exit 1
+          fi
+          if [ "$HEAD_REF" != "next" ] && [[ "$HEAD_REF" != hotfix/* ]]; then
+            echo "::error::main solo acepta Pull Requests desde 'next' o desde una rama 'hotfix/*' (esta viene de '$HEAD_REF')"
             exit 1
           fi
 

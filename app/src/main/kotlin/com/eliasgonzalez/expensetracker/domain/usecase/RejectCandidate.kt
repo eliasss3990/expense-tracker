@@ -9,18 +9,17 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * El chequeo de estado + la escritura van dentro de un Mutex (mismo
- * motivo que CreateCandidate/ConfirmCandidate): sin esto, dos rechazos
- * casi simultaneos del mismo candidato leen PENDING antes de que
- * cualquiera de los dos alcance a marcarlo REJECTED, y quedan dos
- * entradas de actividad para la misma accion.
+ * El chequeo de estado + la escritura van dentro de un Mutex COMPARTIDO
+ * con CreateCandidate/ConfirmCandidate/EditCandidate (ver el comentario
+ * en CreateCandidate.kt): sin esto, dos acciones casi simultaneas sobre
+ * el mismo candidato leen PENDING antes de que cualquiera alcance a
+ * cambiarle el estado.
  */
 class RejectCandidate(
     private val candidates: CandidateRepository,
     private val activity: ActivityRepository,
+    private val mutex: Mutex = Mutex(),
 ) {
-    private val mutex = Mutex()
-
     suspend operator fun invoke(candidateId: Long): Unit = mutex.withLock {
         val candidate = candidates.findById(candidateId) ?: return@withLock
         if (candidate.status != CandidateStatus.PENDING) return@withLock

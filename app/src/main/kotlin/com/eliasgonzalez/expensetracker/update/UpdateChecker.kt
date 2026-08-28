@@ -41,14 +41,32 @@ object UpdateChecker {
  * Compara versiones "x.y.z" numéricamente segmento a segmento (no
  * alfabéticamente - "0.9.0" no puede parecer "mayor" que "0.10.0").
  * Segmentos no numéricos o faltantes cuentan como 0.
+ *
+ * El núcleo numérico se compara sin el sufijo de pre-release (todo lo
+ * que sigue al primer "-", ej. "-beta.1" en "1.2.0-beta.1") - antes ese
+ * sufijo se colaba dentro de un segmento normal ("0-beta".toIntOrNull()
+ * -> null -> 0), así que a un tag pre-release le "faltaba" ese segmento
+ * y el remoto quedaba comparando 1 (segmento propio) contra 0 (el
+ * segmento que le faltaba al actual), dando un falso "hay actualización"
+ * aunque las dos versiones fueran la misma o el remoto fuera un beta más
+ * viejo. Si el núcleo empata, una versión CON sufijo de pre-release
+ * nunca cuenta como más nueva que la misma versión SIN sufijo.
  */
 fun isNewerVersion(remoteVersion: String, currentVersion: String): Boolean {
-    val remote = remoteVersion.split(".").map { it.toIntOrNull() ?: 0 }
-    val current = currentVersion.split(".").map { it.toIntOrNull() ?: 0 }
+    val (remoteCore, remoteIsPreRelease) = remoteVersion.splitVersionCore()
+    val (currentCore, currentIsPreRelease) = currentVersion.splitVersionCore()
+    val remote = remoteCore.split(".").map { it.toIntOrNull() ?: 0 }
+    val current = currentCore.split(".").map { it.toIntOrNull() ?: 0 }
     for (i in 0 until maxOf(remote.size, current.size)) {
         val r = remote.getOrElse(i) { 0 }
         val c = current.getOrElse(i) { 0 }
         if (r != c) return r > c
     }
+    if (remoteIsPreRelease != currentIsPreRelease) return !remoteIsPreRelease
     return false
+}
+
+private fun String.splitVersionCore(): Pair<String, Boolean> {
+    val dashIndex = indexOf('-')
+    return if (dashIndex >= 0) substring(0, dashIndex) to true else this to false
 }

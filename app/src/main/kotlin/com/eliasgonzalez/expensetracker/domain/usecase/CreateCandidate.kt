@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
+import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
@@ -24,18 +25,23 @@ private const val DEDUP_WINDOW_MILLIS = 5 * 60 * 1000L
  * relleno genérico (ver UenoBankParser), y siguen siendo la misma
  * transacción.
  *
- * El chequeo+guardado corre bajo un mutex: dos notificaciones casi
+ * El chequeo+guardado corre bajo un mutex COMPARTIDO con
+ * ConfirmCandidate/EditCandidate/RejectCandidate (inyectado desde
+ * AppContainer, no uno propio por clase): dos notificaciones casi
  * simultáneas (llegan con milisegundos de diferencia, algo común cuando
  * el banco y el mail avisan "a la vez") podían leer el estado antes de
  * que la primera terminara de guardar y las dos pasaban el chequeo de
- * duplicado - una condición de carrera real, no solo teórica.
+ * duplicado - una condición de carrera real, no solo teórica. Un mutex
+ * propio por clase solo serializaba llamadas repetidas al MISMO caso de
+ * uso; no impedía que, por ejemplo, ConfirmCandidate y EditCandidate
+ * operaran sobre el mismo candidato al mismo tiempo y duplicaran el
+ * Expense - de ahí que las cuatro clases compartan una sola instancia.
  */
 class CreateCandidate(
     private val candidates: CandidateRepository,
     private val activity: ActivityRepository,
+    private val mutex: Mutex = Mutex(),
 ) {
-    private val mutex = Mutex()
-
     suspend operator fun invoke(candidate: ExpenseCandidate): Long? = mutex.withLock {
         if (findDuplicate(candidate) != null) return@withLock null
 
@@ -51,6 +57,13 @@ class CreateCandidate(
         id
     }
 
+    // Solo compara contra candidatos que sigan PENDING: uno ya
+    // ACCEPTED/EDITED/REJECTED queda en la lista para siempre (no se
+    // borra) y sin este filtro un candidato ya resuelto seguia
+    // "bloqueando" como duplicado a una compra genuinamente distinta y
+    // posterior con el mismo monto+comercio (ej. dos cafes identicos en
+    // el mismo lugar el mismo dia) - el segundo gasto real desaparecia
+    // en silencio, sin ningun error ni aviso.
     private fun findDuplicate(candidate: ExpenseCandidate): ExpenseCandidate? =
         candidates.candidates.value.find { existing ->
             val merchantOk = if (existing.merchantConfident && candidate.merchantConfident) {
@@ -58,7 +71,8 @@ class CreateCandidate(
             } else {
                 true
             }
-            existing.amount == candidate.amount &&
+            existing.status == CandidateStatus.PENDING &&
+                existing.amount == candidate.amount &&
                 existing.currency == candidate.currency &&
                 merchantOk &&
                 abs(existing.detectedAt - candidate.detectedAt) <= DEDUP_WINDOW_MILLIS

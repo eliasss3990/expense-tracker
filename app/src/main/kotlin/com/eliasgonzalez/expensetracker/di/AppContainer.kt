@@ -14,12 +14,17 @@ import com.eliasgonzalez.expensetracker.domain.usecase.DeleteExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.EditCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.EditExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.ExportBackup
+import com.eliasgonzalez.expensetracker.domain.usecase.FindPendingCandidate
+import com.eliasgonzalez.expensetracker.domain.usecase.ObserveActivity
+import com.eliasgonzalez.expensetracker.domain.usecase.ObserveCandidates
+import com.eliasgonzalez.expensetracker.domain.usecase.ObserveExpenses
 import com.eliasgonzalez.expensetracker.domain.usecase.RegisterExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.RejectCandidate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * Contenedor de dependencias manual (sin Hilt). Para el tamano actual del
@@ -36,18 +41,36 @@ class AppContainer(context: Context) {
     private val localCandidateRepository = LocalCandidateRepository(dbHelper)
     private val localActivityRepository = LocalActivityRepository(dbHelper)
 
-    val expenseRepository: ExpenseRepository = localExpenseRepository
-    val candidateRepository: CandidateRepository = localCandidateRepository
-    val activityRepository: ActivityRepository = localActivityRepository
+    // Privados a propósito: la UI no debería tener una referencia directa
+    // a un repositorio (eso le permitiría leer o mutar salteándose los
+    // casos de uso). Lecturas reactivas se exponen vía los Observe* de
+    // abajo; escrituras, vía cada caso de uso puntual.
+    private val expenseRepository: ExpenseRepository = localExpenseRepository
+    private val candidateRepository: CandidateRepository = localCandidateRepository
+    private val activityRepository: ActivityRepository = localActivityRepository
 
-    val registerExpense = RegisterExpense(expenseRepository, activityRepository)
-    val createCandidate = CreateCandidate(candidateRepository, activityRepository)
-    val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository)
-    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository)
-    val rejectCandidate = RejectCandidate(candidateRepository, activityRepository)
-    val editExpense = EditExpense(expenseRepository, activityRepository)
-    val deleteExpense = DeleteExpense(expenseRepository, activityRepository)
+    // Un solo Mutex por dominio (candidatos, gastos), compartido entre
+    // TODOS los casos de uso que escriben sobre ese dominio - no uno por
+    // clase. Un mutex propio por clase solo serializaba llamadas
+    // repetidas al MISMO caso de uso; no impedia, por ejemplo, que
+    // ConfirmCandidate y EditCandidate operaran sobre el mismo candidato
+    // al mismo tiempo y duplicaran el Expense resultante. Ver el
+    // comentario en CreateCandidate.kt.
+    private val candidateWriteMutex = Mutex()
+    private val expenseWriteMutex = Mutex()
+
+    val registerExpense = RegisterExpense(expenseRepository, activityRepository, expenseWriteMutex)
+    val createCandidate = CreateCandidate(candidateRepository, activityRepository, candidateWriteMutex)
+    val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex)
+    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex)
+    val rejectCandidate = RejectCandidate(candidateRepository, activityRepository, candidateWriteMutex)
+    val editExpense = EditExpense(expenseRepository, activityRepository, expenseWriteMutex)
+    val deleteExpense = DeleteExpense(expenseRepository, activityRepository, expenseWriteMutex)
     val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository)
+    val observeExpenses = ObserveExpenses(expenseRepository)
+    val observeCandidates = ObserveCandidates(candidateRepository)
+    val observeActivity = ObserveActivity(activityRepository)
+    val findPendingCandidate = FindPendingCandidate(candidateRepository)
 
     init {
         appScope.launch {

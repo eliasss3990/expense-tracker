@@ -118,7 +118,7 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
             putExtra(EXTRA_CANDIDATE_ID, candidateId)
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        return PendingIntent.getBroadcast(this, candidateId.toInt() * 10 + action.hashCode() % 10, intent, flags)
+        return PendingIntent.getBroadcast(this, requestCodeFor(candidateId, action), intent, flags)
     }
 
     private fun editActivityPendingIntent(candidateId: Long): PendingIntent {
@@ -127,6 +127,16 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        return PendingIntent.getActivity(this, candidateId.toInt() * 10 + 9, intent, flags)
+        return PendingIntent.getActivity(this, requestCodeFor(candidateId, "edit_activity"), intent, flags)
     }
+
+    // `candidateId.toInt() * 10 + ...` truncaba el Long a Int y podia
+    // colisionar (dos candidateId distintos, mismo request code) para
+    // ids por encima de ~2 mil millones - con FLAG_UPDATE_CURRENT eso
+    // pisaria los extras de un PendingIntent con los del otro. hashCode()
+    // de un string combinado no tiene ese problema de truncamiento
+    // aritmetico (aunque en teoria puede colisionar, es astronomicamente
+    // menos probable que la aritmetica simple de antes).
+    private fun requestCodeFor(candidateId: Long, tag: String): Int =
+        "$candidateId:$tag".hashCode()
 }

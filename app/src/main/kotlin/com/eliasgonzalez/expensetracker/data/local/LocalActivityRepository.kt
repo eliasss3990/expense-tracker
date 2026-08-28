@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private const val RECENT_LIMIT = 100
@@ -17,6 +19,11 @@ class LocalActivityRepository(private val dbHelper: DbHelper) : ActivityReposito
 
     private val _recent = MutableStateFlow<List<ActivityEntry>>(emptyList())
     override val recent: StateFlow<List<ActivityEntry>> = _recent.asStateFlow()
+
+    // Ver el comentario equivalente en LocalExpenseRepository - este es
+    // el repo mas expuesto al lost update, porque casi todos los casos
+    // de uso llaman record() al final.
+    private val mutex = Mutex()
 
     suspend fun hydrate() = withContext(Dispatchers.IO) {
         val loaded = mutableListOf<ActivityEntry>()
@@ -28,9 +35,10 @@ class LocalActivityRepository(private val dbHelper: DbHelper) : ActivityReposito
     }
 
     override suspend fun record(entry: ActivityEntry) = withContext(Dispatchers.IO) {
-        val id = dbHelper.writableDatabase.insert("activity_log", null, entry.toContentValues())
-        _recent.value = (listOf(entry.copy(id = id)) + _recent.value).take(RECENT_LIMIT)
-        Unit
+        mutex.withLock {
+            val id = dbHelper.writableDatabase.insert("activity_log", null, entry.toContentValues())
+            _recent.value = (listOf(entry.copy(id = id)) + _recent.value).take(RECENT_LIMIT)
+        }
     }
 
     private fun ActivityEntry.toContentValues() = ContentValues().apply {

@@ -35,7 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
-import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
+import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
 import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
@@ -55,8 +55,7 @@ class QuickAddActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val editId = intent.getLongExtra(EXTRA_EDIT_CANDIDATE_ID, -1).takeIf { it >= 0 }
-        val editingCandidate = editId?.let { ServiceLocator.get().candidateRepository.findById(it) }
-            ?.takeIf { it.status == CandidateStatus.PENDING }
+        val editingCandidate = editId?.let { ServiceLocator.get().findPendingCandidate(it) }
 
         setContent {
             ExpenseTrackerTheme {

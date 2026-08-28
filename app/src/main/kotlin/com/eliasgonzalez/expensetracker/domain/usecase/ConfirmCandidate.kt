@@ -14,19 +14,21 @@ import kotlinx.coroutines.sync.withLock
  * Idempotente: si el candidato ya no esta PENDING, no hace nada - evita
  * duplicar el Expense si la accion llega dos veces.
  *
- * El chequeo de estado + la escritura van dentro de un Mutex (mismo
- * motivo que CreateCandidate): sin esto, dos confirmaciones casi
- * simultaneas del mismo candidato (ej. un doble tap accidental en la
- * notificacion) leen PENDING antes de que cualquiera de las dos alcance
- * a marcarlo ACCEPTED, y las dos terminan registrando un Expense.
+ * El chequeo de estado + la escritura van dentro de un Mutex COMPARTIDO
+ * con CreateCandidate/EditCandidate/RejectCandidate (ver el comentario
+ * en CreateCandidate.kt para el motivo de compartirlo en vez de uno por
+ * clase): sin esto, dos acciones casi simultaneas sobre el mismo
+ * candidato (ej. un doble tap accidental en la notificacion, o
+ * confirmar y editar el mismo candidato desde dos lugares a la vez)
+ * leen PENDING antes de que cualquiera alcance a cambiarle el estado, y
+ * mas de una termina registrando un Expense para el mismo candidato.
  */
 class ConfirmCandidate(
     private val candidates: CandidateRepository,
     private val registerExpense: RegisterExpense,
     private val activity: ActivityRepository,
+    private val mutex: Mutex = Mutex(),
 ) {
-    private val mutex = Mutex()
-
     suspend operator fun invoke(candidateId: Long): Long? = mutex.withLock {
         val candidate = candidates.findById(candidateId) ?: return@withLock null
         if (candidate.status != CandidateStatus.PENDING) return@withLock null
