@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -136,4 +138,24 @@ internal fun RequiredFieldLabel(text: String) {
             withStyle(SpanStyle(color = MaterialTheme.colorScheme.error)) { append("*") }
         }
     )
+}
+
+/**
+ * Envoltorio obligatorio para cualquier pantalla completa que NO pase
+ * por Scaffold (como la de onboarding de permisos) - sin esto, la
+ * pantalla hereda el fondo claro fijo de la ventana base
+ * (`android:windowBackground`) en vez del fondo del tema actual
+ * (claro/oscuro vía MaterialTheme.colorScheme.background), y termina
+ * desincronizada con los íconos de la barra de estado, que sí siguen el
+ * tema (ver ExpenseTrackerTheme). Scaffold ya resuelve esto solo; esto
+ * es para las pantallas que no lo usan.
+ */
+@Composable
+internal fun FullScreenSurface(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(Modifier.statusBarsPadding(), content = content)
+    }
 }

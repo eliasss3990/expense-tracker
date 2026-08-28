@@ -2,7 +2,6 @@ package com.eliasgonzalez.expensetracker.ui
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -30,6 +29,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,15 +54,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.notification.isNotificationListenerEnabled
+import com.eliasgonzalez.expensetracker.notification.isPostNotificationsGranted
 import com.eliasgonzalez.expensetracker.ui.activitylog.ActivityScreen
 import com.eliasgonzalez.expensetracker.ui.dashboard.DashboardScreen
 import com.eliasgonzalez.expensetracker.ui.dashboard.ManualAddSheet
+import com.eliasgonzalez.expensetracker.ui.onboarding.OnboardingPrefs
+import com.eliasgonzalez.expensetracker.ui.onboarding.PermissionsOnboardingScreen
 import com.eliasgonzalez.expensetracker.ui.theme.ExpenseTrackerTheme
 import com.eliasgonzalez.expensetracker.ui.tray.TrayScreen
 import com.eliasgonzalez.expensetracker.update.ReleaseInfo
@@ -81,6 +83,7 @@ class MainActivity : ComponentActivity() {
     // resultó no disparar consistentemente al volver de la pantalla de
     // Ajustes en algunos dispositivos (Samsung OneUI).
     private val listenerEnabledState = mutableStateOf(false)
+    private val notificationsGrantedState = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
@@ -98,7 +101,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ExpenseTrackerTheme {
-                AppRoot(listenerEnabledState)
+                AppRoot(listenerEnabledState, notificationsGrantedState)
             }
         }
     }
@@ -106,12 +109,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         listenerEnabledState.value = isNotificationListenerEnabled(this)
+        notificationsGrantedState.value = isPostNotificationsGranted(this)
     }
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
+private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted: MutableState<Boolean>) {
     var destination by remember { mutableStateOf(Destination.DASHBOARD) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -148,17 +152,30 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* el resultado no cambia el flujo, solo queda otorgado o no */ }
+    ) { granted -> notificationsGranted.value = granted }
+    val showNotificationsStep = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val openNotificationListenerSettings = {
+        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+    }
 
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
+    var onboardingCompleted by remember {
+        mutableStateOf(OnboardingPrefs.isPermissionsOnboardingCompleted(context))
+    }
+    if (!onboardingCompleted) {
+        PermissionsOnboardingScreen(
+            listenerEnabled = listenerEnabled.value,
+            notificationsGranted = notificationsGranted.value,
+            showNotificationsStep = showNotificationsStep,
+            onOpenNotificationListenerSettings = openNotificationListenerSettings,
+            onRequestNotificationsPermission = {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
+            },
+            onFinish = {
+                OnboardingPrefs.markPermissionsOnboardingCompleted(context)
+                onboardingCompleted = true
+            },
+        )
+        return
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -242,9 +259,15 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
                     onDismiss = { availableUpdate = null },
                 )
             }
-            if (!listenerEnabled.value) {
-                NotificationAccessBanner()
-            }
+            MissingPermissionsBanner(
+                listenerEnabled = listenerEnabled.value,
+                notificationsGranted = notificationsGranted.value,
+                showNotificationsStep = showNotificationsStep,
+                onOpenNotificationListenerSettings = openNotificationListenerSettings,
+                onRequestNotificationsPermission = {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                },
+            )
             when (destination) {
                 Destination.DASHBOARD -> DashboardScreen()
                 Destination.TRAY -> TrayScreen()
@@ -254,34 +277,81 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>) {
     }
 }
 
+private data class MissingPermission(
+    val title: String,
+    val description: String,
+    val actionLabel: String,
+    val onAction: () -> Unit,
+)
+
+/**
+ * Lista TODOS los permisos que falten, no solo el acceso a notificaciones
+ * - antes había un banner dedicado a un solo permiso, y si el usuario ya
+ * lo había resuelto podía seguir faltando el otro sin ningún aviso en el
+ * Dashboard (solo se pedía una vez, automático, al abrir la app).
+ */
 @Composable
-private fun NotificationAccessBanner() {
-    val context = LocalContext.current
+private fun MissingPermissionsBanner(
+    listenerEnabled: Boolean,
+    notificationsGranted: Boolean,
+    showNotificationsStep: Boolean,
+    onOpenNotificationListenerSettings: () -> Unit,
+    onRequestNotificationsPermission: () -> Unit,
+) {
+    val missing = buildList {
+        if (!listenerEnabled) {
+            add(
+                MissingPermission(
+                    title = "Falta activar el acceso a notificaciones",
+                    description = "Sin este permiso no se pueden detectar gastos automáticamente.",
+                    actionLabel = "Activar",
+                    onAction = onOpenNotificationListenerSettings,
+                )
+            )
+        }
+        if (showNotificationsStep && !notificationsGranted) {
+            add(
+                MissingPermission(
+                    title = "Falta el permiso de notificaciones",
+                    description = "Sin este permiso no vas a ver el aviso de un gasto detectado.",
+                    actionLabel = "Permitir",
+                    onAction = onRequestNotificationsPermission,
+                )
+            )
+        }
+    }
+    if (missing.isEmpty()) return
+
     Surface(
         Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.errorContainer,
     ) {
-        Row(
-            Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Falta activar el acceso a notificaciones",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "Sin este permiso no se pueden detectar gastos automáticamente.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                )
+        Column {
+            missing.forEachIndexed { index, permission ->
+                Row(
+                    Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            permission.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            permission.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                    TextButton(onClick = permission.onAction) { Text(permission.actionLabel) }
+                }
+                if (index != missing.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.15f))
+                }
             }
-            TextButton(onClick = {
-                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            }) { Text("Activar") }
         }
     }
 }
