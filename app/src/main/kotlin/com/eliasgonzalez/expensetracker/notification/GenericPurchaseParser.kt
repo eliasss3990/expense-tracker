@@ -35,15 +35,26 @@ object GenericPurchaseParser : NotificationParser {
     private val amountRegex = Regex("""(?:Gs\.?|₲|PYG)\s*([\d.,]+)""", RegexOption.IGNORE_CASE)
     private val merchantRegex = Regex("""(?:en|in)\s+([A-Za-zÀ-ÿ0-9 '&.-]{2,40})""", RegexOption.IGNORE_CASE)
 
+    // Hallazgo real probando en dispositivo (2026-08-28): una transferencia
+    // ENTRANTE de otro banco ("TRANSFERENCIA DE OTRAS ENTIDADES RECIBIDA",
+    // mail de operbancaweb/Banco Familiar via Gmail) se detectaba como
+    // gasto - el parser solo miraba si había un monto, sin distinguir
+    // ingreso de egreso. UenoBankParser ya excluye explícitamente sus
+    // "Recibiste"; acá se necesita lo mismo pero por palabra clave, porque
+    // este parser es genérico y no conoce el formato exacto de cada banco.
+    private val incomeKeywordRegex = Regex("""recib|acredit|ingreso""", RegexOption.IGNORE_CASE)
+
     override fun canHandle(context: NotificationContext): Boolean {
         if (context.packageName !in TRUSTED_PACKAGES) return false
         val body = "${context.title} ${context.text} ${context.bigText}"
+        if (incomeKeywordRegex.containsMatchIn(body)) return false
         return amountRegex.containsMatchIn(body)
     }
 
     override fun parse(context: NotificationContext): ParseResult? {
         if (context.packageName !in TRUSTED_PACKAGES) return null
         val body = "${context.title} ${context.text} ${context.bigText}"
+        if (incomeKeywordRegex.containsMatchIn(body)) return null
         val amountMatch = amountRegex.find(body) ?: return null
         val amount = amountMatch.groupValues[1]
             .replace(".", "")

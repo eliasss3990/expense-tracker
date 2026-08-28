@@ -7,7 +7,7 @@ package com.eliasgonzalez.expensetracker.notification
  * un ingreso de dinero).
  */
 object ParserEngine {
-    private val specificParsers = listOf(UenoBankParser)
+    private val specificParsers = listOf(UenoBankParser, BancoFamiliarParser)
 
     fun parse(context: NotificationContext): ParseResult? {
         val specific = specificParsers.firstOrNull { it.canHandle(context) }

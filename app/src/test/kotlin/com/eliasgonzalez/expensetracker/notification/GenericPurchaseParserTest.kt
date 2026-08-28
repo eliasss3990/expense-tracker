@@ -356,4 +356,62 @@ class GenericPurchaseParserTest {
         assertTrue(GenericPurchaseParser.canHandle(context))
         assertEquals(30_000L, GenericPurchaseParser.parse(context)!!.amount)
     }
+
+    // ---------- transferencias entrantes: no son gastos (hallazgo real en
+    // dispositivo, 2026-08-28) ----------
+    //
+    // El parser solo miraba si habia un monto, sin distinguir si el texto
+    // hablaba de un ingreso o un egreso. Una transferencia RECIBIDA de otro
+    // banco (mail real de operbancaweb/Banco Familiar via Gmail) se
+    // detectaba como "gasto". Verificado revirtiendo el fix (sacando el
+    // chequeo de incomeKeywordRegex) - los 3 tests de abajo fallan como se
+    // espera. Con el fix, pasan.
+
+    @Test
+    fun `transferencia entrante de otro banco via mail no se detecta como gasto`() {
+        // Formato real de un mail de confirmacion de transferencia entrante
+        // (banco/remitente/nombres/numeros anonimizados - la estructura y
+        // las palabras clave que importan para el parser son las reales).
+        val context = notification(
+            title = "operbancaweb",
+            text = "Transferencia de otros bancos",
+            bigText = """
+                Transferencia de otros bancos
+
+                TRANSFERENCIA DE OTRAS ENTIDADES RECIBIDA
+                Hemos registrado la siguiente operación de transferencia
+                Nro. de Operación:
+                000000000
+                Entidad Pagadora:
+                BANCO EJEMPLO S.A.
+                Cliente Pagador:
+                JUAN PEREZ
+                Moneda y Monto:
+                PYG 250.000
+                Entidad Beneficiaria:
+                BANCO EJEMPLO DOS S.A.E.C.A.
+                Cliente Beneficiario:
+                Juan Perez
+            """.trimIndent(),
+        )
+
+        assertFalse(GenericPurchaseParser.canHandle(context))
+        assertNull(GenericPurchaseParser.parse(context))
+    }
+
+    @Test
+    fun `palabra clave acreditado tambien excluye una transferencia entrante`() {
+        val context = notification(text = "Te acreditamos Gs. 100.000 en tu cuenta")
+
+        assertFalse(GenericPurchaseParser.canHandle(context))
+        assertNull(GenericPurchaseParser.parse(context))
+    }
+
+    @Test
+    fun `palabra clave ingreso tambien excluye una transferencia entrante`() {
+        val context = notification(text = "Nuevo ingreso de Gs. 100.000 en tu cuenta")
+
+        assertFalse(GenericPurchaseParser.canHandle(context))
+        assertNull(GenericPurchaseParser.parse(context))
+    }
 }

@@ -1,6 +1,8 @@
 package com.eliasgonzalez.expensetracker.update
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -98,5 +100,30 @@ class UpdateCheckerTest {
     @Test
     fun `guion como primer caracter no crashea`() {
         assertFalse(isNewerVersion("-1.2.0", "0.0.0"))
+    }
+
+    // --- findApkAssetUrl: elegir el asset .apk correcto entre los
+    // assets de una Release de GitHub, para la instalación in-app.
+
+    @Test
+    fun `encuentra la url del asset apk entre varios assets`() {
+        val assets = listOf(
+            "checksums.txt" to "https://example.com/checksums.txt",
+            "app-release.apk" to "https://example.com/app-release.apk",
+        )
+
+        assertEquals("https://example.com/app-release.apk", findApkAssetUrl(assets))
+    }
+
+    @Test
+    fun `devuelve null si no hay ningun asset apk`() {
+        val assets = listOf("checksums.txt" to "https://example.com/checksums.txt")
+
+        assertNull(findApkAssetUrl(assets))
+    }
+
+    @Test
+    fun `devuelve null si la release no tiene assets`() {
+        assertNull(findApkAssetUrl(emptyList()))
     }
 }
