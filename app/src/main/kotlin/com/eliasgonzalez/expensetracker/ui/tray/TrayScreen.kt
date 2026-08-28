@@ -55,7 +55,7 @@ import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.EXPENSES_PAGE_SIZE
 import com.eliasgonzalez.expensetracker.ui.common.EmptyState
-import com.eliasgonzalez.expensetracker.domain.sanitizeAmountInput
+import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
 import com.eliasgonzalez.expensetracker.ui.theme.brandColor
 import kotlinx.coroutines.launch
 

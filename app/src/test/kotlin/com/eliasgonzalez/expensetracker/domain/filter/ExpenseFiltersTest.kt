@@ -1,4 +1,4 @@
-package com.eliasgonzalez.expensetracker.domain
+package com.eliasgonzalez.expensetracker.domain.filter
 
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource

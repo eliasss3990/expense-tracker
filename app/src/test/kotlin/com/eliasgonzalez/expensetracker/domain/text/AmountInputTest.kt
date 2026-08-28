@@ -1,4 +1,4 @@
-package com.eliasgonzalez.expensetracker.domain
+package com.eliasgonzalez.expensetracker.domain.text
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

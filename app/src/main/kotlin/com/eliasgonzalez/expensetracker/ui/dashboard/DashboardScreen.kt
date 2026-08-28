@@ -43,13 +43,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.model.Category
-import com.eliasgonzalez.expensetracker.domain.DateRangeFilter
-import com.eliasgonzalez.expensetracker.domain.availableMonths
+import com.eliasgonzalez.expensetracker.domain.filter.DateRangeFilter
+import com.eliasgonzalez.expensetracker.domain.filter.availableMonths
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.EXPENSES_PAGE_SIZE
 import com.eliasgonzalez.expensetracker.ui.common.EmptyState
 import com.eliasgonzalez.expensetracker.ui.common.SectionCard
-import com.eliasgonzalez.expensetracker.domain.matchesDateRange
+import com.eliasgonzalez.expensetracker.domain.filter.matchesDateRange
 import com.eliasgonzalez.expensetracker.ui.theme.MoneyDisplayStyle
 import com.eliasgonzalez.expensetracker.ui.theme.brandColor
 import kotlinx.coroutines.launch
