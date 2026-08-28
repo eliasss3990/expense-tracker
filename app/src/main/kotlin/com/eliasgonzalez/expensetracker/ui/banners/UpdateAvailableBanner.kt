@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.eliasgonzalez.expensetracker.update.ApkInstaller
 import com.eliasgonzalez.expensetracker.update.ReleaseInfo
 
 @Composable
@@ -25,6 +26,17 @@ internal fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) 
     val context = LocalContext.current
     fun openRelease() {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.htmlUrl)))
+    }
+    // Si la Release no tiene ningún asset .apk (no debería pasar con el
+    // workflow actual), cae a abrir la página del Release en el
+    // navegador en vez de no hacer nada.
+    fun downloadOrOpenRelease() {
+        val apkUrl = release.apkDownloadUrl
+        if (apkUrl != null) {
+            ApkInstaller.downloadAndInstall(context, apkUrl)
+        } else {
+            openRelease()
+        }
     }
     Surface(
         Modifier.fillMaxWidth(),
@@ -36,9 +48,9 @@ internal fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) 
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // clickable acá porque el texto dice explícitamente "tocá
-            // para descargarla" - antes solo el botón "Ver" hacía algo,
+            // para instalarla" - antes solo el botón "Ver" hacía algo,
             // tocar el título/subtítulo no tenía ningún efecto.
-            Column(Modifier.weight(1f).clickable(onClick = ::openRelease)) {
+            Column(Modifier.weight(1f).clickable(onClick = ::downloadOrOpenRelease)) {
                 Text(
                     "Hay una nueva versión disponible",
                     style = MaterialTheme.typography.titleSmall,
@@ -46,13 +58,13 @@ internal fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) 
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "v${release.versionName} — tocá para descargarla",
+                    "v${release.versionName} — tocá para instalarla",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }
             TextButton(onClick = onDismiss) { Text("Ahora no") }
-            TextButton(onClick = ::openRelease) { Text("Ver") }
+            TextButton(onClick = ::downloadOrOpenRelease) { Text("Ver") }
         }
     }
 }
