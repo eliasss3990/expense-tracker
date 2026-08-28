@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.quicksettings
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
@@ -29,7 +30,7 @@ class RegisterExpenseTileService : TileService() {
             Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
         }.apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startActivityAndCollapse(
                 PendingIntent.getActivity(
                     this,
@@ -39,7 +40,13 @@ class RegisterExpenseTileService : TileService() {
                 )
             )
         } else {
+            // El overload con PendingIntent no existe como método en el
+            // framework antes de API 34 (NoSuchMethodError si se llama ahí),
+            // así que para versiones viejas no queda otra que el overload
+            // deprecado - lint lo marca como error igual sin mirar el guard
+            // de SDK_INT de arriba, por eso el @SuppressLint puntual.
             @Suppress("DEPRECATION")
+            @SuppressLint("StartActivityAndCollapseDeprecated")
             startActivityAndCollapse(targetIntent)
         }
     }
