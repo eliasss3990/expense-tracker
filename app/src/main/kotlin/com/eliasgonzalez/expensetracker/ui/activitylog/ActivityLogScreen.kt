@@ -113,7 +113,7 @@ internal fun ActivityScreen() {
                     modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                 )
             }
-            items(dayEntries) { entry -> ActivityRow(entry) }
+            items(dayEntries, key = { it.id }) { entry -> ActivityRow(entry) }
         }
 
         if (visibleCount < entries.size) {

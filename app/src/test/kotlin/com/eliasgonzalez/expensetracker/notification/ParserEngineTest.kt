@@ -15,8 +15,14 @@ class ParserEngineTest {
         timestamp = 0L,
     )
 
+    // Paquete real de Google Wallet, uno de los pocos en la lista blanca
+    // de GenericPurchaseParser (ver ese archivo) - antes se usaba un
+    // paquete inventado ("com.otrobanco.app") para representar "una
+    // fuente sin parser propio", pero GenericPurchaseParser ahora exige
+    // que el paquete este en su lista blanca, asi que un paquete
+    // inventado ya no dispara el camino generico.
     private fun genericNotification(text: String, applicationName: String = "OtroBanco") = NotificationContext(
-        packageName = "com.otrobanco.app",
+        packageName = "com.google.android.apps.walletnfcrel",
         applicationName = applicationName,
         title = "",
         text = text,

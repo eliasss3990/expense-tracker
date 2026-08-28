@@ -10,19 +10,20 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * El chequeo de estado + la escritura van dentro de un Mutex (mismo
- * motivo que CreateCandidate/ConfirmCandidate/RejectCandidate): sin
- * esto, dos ediciones casi simultaneas del mismo candidato leen PENDING
- * antes de que cualquiera de las dos alcance a marcarlo EDITED, y las
- * dos terminan registrando un Expense.
+ * El chequeo de estado + la escritura van dentro de un Mutex COMPARTIDO
+ * con CreateCandidate/ConfirmCandidate/RejectCandidate (ver el
+ * comentario en CreateCandidate.kt): sin esto, dos acciones casi
+ * simultaneas sobre el mismo candidato (ej. editar y confirmar el mismo
+ * candidato a la vez desde dos lugares) leen PENDING antes de que
+ * cualquiera alcance a cambiarle el estado, y mas de una termina
+ * registrando un Expense.
  */
 class EditCandidate(
     private val candidates: CandidateRepository,
     private val registerExpense: RegisterExpense,
     private val activity: ActivityRepository,
+    private val mutex: Mutex = Mutex(),
 ) {
-    private val mutex = Mutex()
-
     suspend operator fun invoke(
         candidateId: Long,
         amount: Long,

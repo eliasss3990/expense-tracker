@@ -11,3 +11,8 @@ build/
 *.apk
 *.aab
 settings.json
+# Defensivo: el keystore de release real vive fuera del repo
+# (~/secrets/expense-tracker/), pero si alguna vez alguien lo copia acá
+# por error, que no llegue a poder commitearse sin querer.
+*.jks
+*.keystore

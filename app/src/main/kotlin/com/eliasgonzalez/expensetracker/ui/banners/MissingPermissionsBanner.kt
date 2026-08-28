@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -128,8 +129,20 @@ internal fun MissingPermissionsBanner(
         // Sin divisor entre filas a propósito: cada una ya es su propia
         // card redondeada con margen vertical, una línea acá se veía
         // como un corte raro cruzando dos tarjetas separadas.
+        //
+        // key(permission.key) es obligatorio acá: sin esto, Compose
+        // matchea el estado remember-ado de cada fila (visible, offsetX,
+        // widthPx) por POSICIÓN en la lista, no por identidad. Si el
+        // usuario desliza la fila 0 (ej. acceso a notificaciones), esa
+        // fila colapsa y a los 200ms se saca de `missing` - la lista baja
+        // a 1 elemento y Compose reutiliza el estado ya "colapsando" de
+        // la posición 0 para lo que ahora ocupa ese slot (el otro
+        // permiso), que el usuario nunca tocó: terminaba
+        // desapareciendo y marcándose como descartado solo.
         missing.forEach { permission ->
-            DismissibleMissingPermissionRow(permission = permission, onDismissed = { onDismiss(permission.key) })
+            key(permission.key) {
+                DismissibleMissingPermissionRow(permission = permission, onDismissed = { onDismiss(permission.key) })
+            }
         }
     }
 }
@@ -250,7 +263,12 @@ private fun DismissibleMissingPermissionRow(permission: MissingPermission, onDis
                         )
                     }
                     TextButton(onClick = permission.onAction) { Text(permission.actionLabel) }
-                    IconButton(onClick = { visible = false }, modifier = Modifier.size(28.dp)) {
+                    // Sin size() explícito: el default de IconButton ya es
+                    // 48dp de área táctil (el mínimo de Material3) - un
+                    // size(28.dp) acá la reducía por debajo del target real,
+                    // no solo del ícono visual. El ícono en sí sigue chico
+                    // via su propio Modifier.size(14.dp).
+                    IconButton(onClick = { visible = false }) {
                         Icon(
                             Icons.Filled.Close,
                             contentDescription = "Ocultar aviso",
