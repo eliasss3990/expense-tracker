@@ -96,25 +96,32 @@ class QuickAddOverlayService : Service() {
         super.onDestroy()
     }
 
-    /** Sin esto el teclado nunca aparece: la ventana es NOT_FOCUSABLE por
+    /**
+     * Sin esto el teclado nunca aparece: la ventana es NOT_FOCUSABLE por
      * default para no bloquear el resto del celular. Sacamos esa flag
-     * justo antes de pedir el foco, y la volvemos a poner al perderlo. */
+     * recién cuando tocan un campo por primera vez, y queda así (no se
+     * vuelve a poner NOT_FOCUSABLE al perder el foco entre campos) - eso
+     * es justamente lo que causaba el bug del doble toque: si la volvés a
+     * poner al cambiar de campo, el toque en el segundo campo también
+     * tiene que esperar a que la ventana vuelva a ser focusable.
+     *
+     * `updateViewLayout` es asíncrono del lado del sistema: pedir el foco
+     * y mostrar el teclado en la misma llamada corre una carrera contra
+     * eso y pierde la primera vez. `post{}` alcanza porque solo hace
+     * falta esperar al siguiente ciclo del message loop, no un delay fijo.
+     */
     private fun allowKeyboardFocus(editText: EditText) {
-        editText.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) {
+        editText.setOnClickListener {
+            val wasFocusable = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0
+            if (!wasFocusable) {
                 layoutParams.flags = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                 windowManager.updateViewLayout(rootView, layoutParams)
-            } else {
-                layoutParams.flags = layoutParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                windowManager.updateViewLayout(rootView, layoutParams)
             }
-        }
-        editText.setOnClickListener {
-            layoutParams.flags = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-            windowManager.updateViewLayout(rootView, layoutParams)
-            editText.requestFocus()
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+            editText.post {
+                editText.requestFocus()
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+            }
         }
     }
 
