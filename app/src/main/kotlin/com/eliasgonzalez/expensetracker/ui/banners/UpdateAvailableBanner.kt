@@ -64,7 +64,7 @@ internal fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) 
                 )
             }
             TextButton(onClick = onDismiss) { Text("Ahora no") }
-            TextButton(onClick = ::downloadOrOpenRelease) { Text("Ver") }
+            TextButton(onClick = ::downloadOrOpenRelease) { Text("Actualizar") }
         }
     }
 }

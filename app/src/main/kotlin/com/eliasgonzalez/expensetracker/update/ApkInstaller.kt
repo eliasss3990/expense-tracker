@@ -47,10 +47,12 @@ object ApkInstaller {
             }
         }
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-        // ContextCompat.registerReceiver ya resuelve el flag correcto segun la
-        // API del dispositivo (RECEIVER_NOT_EXPORTED solo aplica >= API 33,
-        // pero lint exige que el flag este presente en todas las ramas).
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        // RECEIVER_EXPORTED, no RECEIVER_NOT_EXPORTED: este broadcast lo manda
+        // el proceso del sistema que corre DownloadManager (otro UID, no
+        // nuestra propia app) - con NOT_EXPORTED el sistema lo descarta en
+        // silencio y el instalador nunca se dispara, aunque la descarga sí
+        // termine bien (bug real encontrado probando en dispositivo).
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
     }
 
     private fun installApk(context: Context, apkFile: File) {
