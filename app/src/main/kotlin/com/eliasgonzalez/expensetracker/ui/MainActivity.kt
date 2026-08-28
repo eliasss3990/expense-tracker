@@ -2,43 +2,37 @@ package com.eliasgonzalez.expensetracker.ui
 
 import android.Manifest
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,11 +43,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
@@ -61,9 +53,13 @@ import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.notification.isNotificationListenerEnabled
 import com.eliasgonzalez.expensetracker.notification.isPostNotificationsGranted
 import com.eliasgonzalez.expensetracker.ui.activitylog.ActivityScreen
+import com.eliasgonzalez.expensetracker.ui.banners.MissingPermissionsBanner
+import com.eliasgonzalez.expensetracker.ui.banners.UpdateAvailableBanner
 import com.eliasgonzalez.expensetracker.ui.dashboard.DashboardScreen
 import com.eliasgonzalez.expensetracker.ui.dashboard.ManualAddSheet
 import com.eliasgonzalez.expensetracker.ui.onboarding.OnboardingPrefs
+import com.eliasgonzalez.expensetracker.ui.onboarding.PERMISSION_KEY_NOTIFICATION_LISTENER
+import com.eliasgonzalez.expensetracker.ui.onboarding.PERMISSION_KEY_POST_NOTIFICATIONS
 import com.eliasgonzalez.expensetracker.ui.onboarding.PermissionsOnboardingScreen
 import com.eliasgonzalez.expensetracker.ui.theme.ExpenseTrackerTheme
 import com.eliasgonzalez.expensetracker.ui.tray.TrayScreen
@@ -113,10 +109,17 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted: MutableState<Boolean>) {
     var destination by remember { mutableStateOf(Destination.DASHBOARD) }
+    // "Atrás" en Bandeja/Actividad vuelve al Dashboard en vez de salir de
+    // la app directamente - antes no había ningún BackHandler, así que
+    // el sistema siempre hacía el comportamiento por default (cerrar la
+    // Activity), sin importar en qué pestaña estuviera parado el usuario.
+    BackHandler(enabled = destination != Destination.DASHBOARD) {
+        destination = Destination.DASHBOARD
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val candidates by ServiceLocator.get().observeCandidates().collectAsState()
@@ -178,6 +181,48 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
         return
     }
 
+    // Deslizar un permiso faltante lo oculta del banner (como una noti),
+    // pero sigue accesible desde el menú "Permisos" - si se otorga
+    // después de ocultarlo, se limpia solo para que si algún día se
+    // revoca de nuevo el banner vuelva a aparecer fresco.
+    var dismissedPermissionKeys by remember {
+        mutableStateOf(OnboardingPrefs.getDismissedPermissionKeys(context))
+    }
+    fun dismissPermission(key: String) {
+        OnboardingPrefs.dismissPermission(context, key)
+        dismissedPermissionKeys = dismissedPermissionKeys + key
+    }
+    fun clearDismissalIfGranted(key: String, granted: Boolean) {
+        if (granted && key in dismissedPermissionKeys) {
+            OnboardingPrefs.clearPermissionDismissal(context, key)
+            dismissedPermissionKeys = dismissedPermissionKeys - key
+        }
+    }
+    LaunchedEffect(listenerEnabled.value) {
+        clearDismissalIfGranted(PERMISSION_KEY_NOTIFICATION_LISTENER, listenerEnabled.value)
+    }
+    LaunchedEffect(notificationsGranted.value) {
+        clearDismissalIfGranted(PERMISSION_KEY_POST_NOTIFICATIONS, notificationsGranted.value)
+    }
+    var showPermissionsScreen by remember { mutableStateOf(false) }
+    if (showPermissionsScreen) {
+        // Sin esto, "atrás" acá cerraba directo la app entera - no había
+        // ninguna pantalla previa a la que volver porque esta se abre
+        // desde el menú, no desde una navegación con historial.
+        BackHandler { showPermissionsScreen = false }
+        PermissionsOnboardingScreen(
+            listenerEnabled = listenerEnabled.value,
+            notificationsGranted = notificationsGranted.value,
+            showNotificationsStep = showNotificationsStep,
+            onOpenNotificationListenerSettings = openNotificationListenerSettings,
+            onRequestNotificationsPermission = {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            },
+            onFinish = { showPermissionsScreen = false },
+        )
+        return
+    }
+
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -219,6 +264,13 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                             onClick = {
                                 showOverflowMenu = false
                                 scope.launch { checkForUpdate(showUpToDateMessage = true) }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Permisos") },
+                            onClick = {
+                                showOverflowMenu = false
+                                showPermissionsScreen = true
                             },
                         )
                     }
@@ -263,6 +315,8 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                 listenerEnabled = listenerEnabled.value,
                 notificationsGranted = notificationsGranted.value,
                 showNotificationsStep = showNotificationsStep,
+                dismissedKeys = dismissedPermissionKeys,
+                onDismiss = ::dismissPermission,
                 onOpenNotificationListenerSettings = openNotificationListenerSettings,
                 onRequestNotificationsPermission = {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -273,118 +327,6 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                 Destination.TRAY -> TrayScreen()
                 Destination.ACTIVITY -> ActivityScreen()
             }
-        }
-    }
-}
-
-private data class MissingPermission(
-    val title: String,
-    val description: String,
-    val actionLabel: String,
-    val onAction: () -> Unit,
-)
-
-/**
- * Lista TODOS los permisos que falten, no solo el acceso a notificaciones
- * - antes había un banner dedicado a un solo permiso, y si el usuario ya
- * lo había resuelto podía seguir faltando el otro sin ningún aviso en el
- * Dashboard (solo se pedía una vez, automático, al abrir la app).
- */
-@Composable
-private fun MissingPermissionsBanner(
-    listenerEnabled: Boolean,
-    notificationsGranted: Boolean,
-    showNotificationsStep: Boolean,
-    onOpenNotificationListenerSettings: () -> Unit,
-    onRequestNotificationsPermission: () -> Unit,
-) {
-    val missing = buildList {
-        if (!listenerEnabled) {
-            add(
-                MissingPermission(
-                    title = "Falta activar el acceso a notificaciones",
-                    description = "Sin este permiso no se pueden detectar gastos automáticamente.",
-                    actionLabel = "Activar",
-                    onAction = onOpenNotificationListenerSettings,
-                )
-            )
-        }
-        if (showNotificationsStep && !notificationsGranted) {
-            add(
-                MissingPermission(
-                    title = "Falta el permiso de notificaciones",
-                    description = "Sin este permiso no vas a ver el aviso de un gasto detectado.",
-                    actionLabel = "Permitir",
-                    onAction = onRequestNotificationsPermission,
-                )
-            )
-        }
-    }
-    if (missing.isEmpty()) return
-
-    Surface(
-        Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.errorContainer,
-    ) {
-        Column {
-            missing.forEachIndexed { index, permission ->
-                Row(
-                    Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            permission.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            permission.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                    }
-                    TextButton(onClick = permission.onAction) { Text(permission.actionLabel) }
-                }
-                if (index != missing.lastIndex) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.15f))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    Surface(
-        Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.primaryContainer,
-    ) {
-        Row(
-            Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Hay una nueva versión disponible",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "v${release.versionName} — tocá para descargarla",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
-            TextButton(onClick = onDismiss) { Text("Ahora no") }
-            TextButton(onClick = {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.htmlUrl)))
-            }) { Text("Ver") }
         }
     }
 }
