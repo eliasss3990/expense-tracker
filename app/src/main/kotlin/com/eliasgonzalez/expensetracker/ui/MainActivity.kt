@@ -380,7 +380,6 @@ private fun DashboardScreen() {
     LaunchedEffect(dateRangeFilter, specificMonth, categoryFilter) { visibleCount = EXPENSES_PAGE_SIZE }
     val thisMonth = remember(expenses) { expenses.filter { isInCurrentMonth(it.occurredAt) } }
     val total = thisMonth.sumOf { it.amount }
-    val average = if (thisMonth.isNotEmpty()) total / thisMonth.size else 0
     val monthLabel = remember {
         YearMonth.now().month.getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es"))
             .replaceFirstChar { it.uppercase() } + " " + YearMonth.now().year
@@ -417,7 +416,7 @@ private fun DashboardScreen() {
                 Text("₲%,d".format(total), style = MoneyDisplayStyle)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "${thisMonth.size} ${if (thisMonth.size == 1) "movimiento" else "movimientos"} · promedio ₲%,d".format(average),
+                    "${thisMonth.size} ${if (thisMonth.size == 1) "movimiento" else "movimientos"}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
