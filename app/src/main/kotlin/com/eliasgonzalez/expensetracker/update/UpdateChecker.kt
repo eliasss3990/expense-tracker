@@ -9,7 +9,7 @@ import java.net.URL
 private const val LATEST_RELEASE_URL =
     "https://api.github.com/repos/eliasss3990/expense-tracker/releases/latest"
 
-data class ReleaseInfo(val versionName: String, val htmlUrl: String)
+data class ReleaseInfo(val versionName: String, val htmlUrl: String, val apkDownloadUrl: String?)
 
 /**
  * Chequea la última Release publicada en GitHub. Mientras el repo sea
@@ -28,13 +28,41 @@ object UpdateChecker {
             connection.inputStream.use { stream ->
                 if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
                 val json = JSONObject(stream.bufferedReader().readText())
+                val assets = json.optJSONArray("assets")
+                val assetNamesToUrls = buildList {
+                    if (assets != null) {
+                        for (i in 0 until assets.length()) {
+                            val asset = assets.getJSONObject(i)
+                            add(asset.optString("name") to asset.optString("browser_download_url"))
+                        }
+                    }
+                }
                 ReleaseInfo(
                     versionName = json.getString("tag_name").removePrefix("v"),
                     htmlUrl = json.getString("html_url"),
+                    apkDownloadUrl = findApkAssetUrl(assetNamesToUrls),
                 )
             }
         }.getOrNull()
     }
+}
+
+/**
+ * Busca entre los assets de la Release el .apk a descargar. Si hay más
+ * de uno (no debería pasar con el workflow actual, que sube un solo
+ * app-release.apk) toma el primero - null si no hay ningún .apk, para
+ * que el banner caiga de nuevo a abrir la página del Release en el
+ * navegador en vez de romper.
+ *
+ * Recibe pares (nombre, url) ya extraídos del JSON en vez de un
+ * org.json.JSONObject - el org.json que trae el android.jar de test
+ * lanza "not mocked" en unit tests JVM (ver ExportBackupTest), así que
+ * mantener esta parte pura y sin JSONObject permite testearla sin
+ * Robolectric.
+ */
+internal fun findApkAssetUrl(assetNamesToUrls: List<Pair<String, String>>): String? {
+    val apkAsset = assetNamesToUrls.firstOrNull { (name, _) -> name.endsWith(".apk") } ?: return null
+    return apkAsset.second.ifBlank { null }
 }
 
 /**
