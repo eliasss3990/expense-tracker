@@ -3,6 +3,18 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Firma de release leída de variables de entorno (seteadas por el
+// workflow de CI desde GitHub Secrets) - nunca se commitea un keystore
+// ni sus contraseñas. Sin estas env vars (build local de un dev), el
+// build type release queda sin signingConfig - assembleRelease sigue
+// andando para probar la config de minify/shrink, pero el APK no se
+// puede instalar hasta firmarlo (no es un caso de uso real local).
+val releaseKeystorePath: String? = System.getenv("RELEASE_KEYSTORE_PATH")
+val releaseKeystorePassword: String? = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")
+val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = !releaseKeystorePath.isNullOrBlank()
+
 android {
     namespace = "com.eliasgonzalez.expensetracker"
     compileSdk = 37
@@ -17,6 +29,26 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     compileOptions {

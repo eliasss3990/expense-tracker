@@ -1,0 +1,156 @@
+name: CI
+
+# Solo corre en Pull Requests, nunca en push directo - un push directo a
+# next/main no debería existir (las ramas están protegidas), y si
+# llegara a pasar no tiene sentido validar algo que ya se mergeó. main
+# tiene su propio disparador de push en release.yml (build+firma+publish).
+on:
+  pull_request:
+    branches: [next, main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # main solo se actualiza vía PR, y ese PR tiene que venir de "next"
+  # (consolidamos ahí antes de tocar la rama que dispara releases) o de
+  # una rama "hotfix/*" para arreglos urgentes que no pueden esperar el
+  # paso completo por next - a cambio, un hotfix corre su propio lint
+  # (job validate-hotfix) en vez del pipeline completo de next.
+  enforce-main-source:
+    name: Solo next puede mergear a main
+    if: github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verificar rama de origen del PR
+        run: |
+          if [ "${{ github.head_ref }}" != "next" ] && [[ "${{ github.head_ref }}" != hotfix/* ]]; then
+            echo "::error::main solo acepta Pull Requests desde 'next' o desde una rama 'hotfix/*' (esta viene de '${{ github.head_ref }}')"
+            exit 1
+          fi
+
+  validate-hotfix:
+    name: Validate hotfix
+    if: github.base_ref == 'main' && startsWith(github.head_ref, 'hotfix/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
+      - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
+      - name: Lint
+        run: ./gradlew lintDebug --console=plain
+
+  validate:
+    name: Validate
+    if: github.base_ref == 'next'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
+      - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
+      - name: Lint
+        run: ./gradlew lintDebug --console=plain
+
+  unit-tests:
+    name: Unit tests
+    if: github.base_ref == 'next'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
+      - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
+      - name: Tests unitarios de dominio y UI
+        run: ./gradlew testDebugUnitTest --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results
+          path: app/build/reports/tests/testDebugUnitTest
+          retention-days: 14
+
+  build-debug:
+    name: Build debug APK
+    if: github.base_ref == 'next'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
+      - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
+      - name: Compilar APK debug
+        run: ./gradlew assembleDebug --console=plain

@@ -1,0 +1,66 @@
+name: Release
+
+# Corre después de un merge a main - en ese punto ya pasó todo el CI
+# (validate + unit tests + build) porque main exige esos checks antes de
+# aceptar el PR. Este workflow no vuelve a "aprobar" nada, solo empaqueta
+# y publica lo que ya se validó.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Firmar y publicar Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
+      - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
+
+      - name: Leer versionName de app/build.gradle.kts
+        id: version
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Decodificar el keystore de release
+        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore.jks"
+
+      - name: Compilar el APK de release firmado
+        env:
+          RELEASE_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore.jks
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --console=plain
+
+      - name: Publicar GitHub Release con el APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: app/build/outputs/apk/release/app-release.apk
