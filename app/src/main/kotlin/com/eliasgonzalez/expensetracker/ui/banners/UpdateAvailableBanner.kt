@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.ui.banners
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,9 @@ import com.eliasgonzalez.expensetracker.update.ReleaseInfo
 @Composable
 internal fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    fun openRelease() {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.htmlUrl)))
+    }
     Surface(
         Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -31,7 +35,10 @@ internal fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) 
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(Modifier.weight(1f)) {
+            // clickable acá porque el texto dice explícitamente "tocá
+            // para descargarla" - antes solo el botón "Ver" hacía algo,
+            // tocar el título/subtítulo no tenía ningún efecto.
+            Column(Modifier.weight(1f).clickable(onClick = ::openRelease)) {
                 Text(
                     "Hay una nueva versión disponible",
                     style = MaterialTheme.typography.titleSmall,
@@ -45,9 +52,7 @@ internal fun UpdateAvailableBanner(release: ReleaseInfo, onDismiss: () -> Unit) 
                 )
             }
             TextButton(onClick = onDismiss) { Text("Ahora no") }
-            TextButton(onClick = {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.htmlUrl)))
-            }) { Text("Ver") }
+            TextButton(onClick = ::openRelease) { Text("Ver") }
         }
     }
 }

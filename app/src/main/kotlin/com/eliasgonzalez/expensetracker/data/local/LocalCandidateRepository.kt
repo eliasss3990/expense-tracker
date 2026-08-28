@@ -10,12 +10,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class LocalCandidateRepository(private val dbHelper: DbHelper) : CandidateRepository {
 
     private val _candidates = MutableStateFlow<List<ExpenseCandidate>>(emptyList())
     override val candidates: StateFlow<List<ExpenseCandidate>> = _candidates.asStateFlow()
+
+    // Ver el comentario equivalente en LocalExpenseRepository - mismo
+    // lost update real sin este mutex.
+    private val mutex = Mutex()
 
     suspend fun hydrate() = withContext(Dispatchers.IO) {
         val loaded = mutableListOf<ExpenseCandidate>()
@@ -26,17 +32,20 @@ class LocalCandidateRepository(private val dbHelper: DbHelper) : CandidateReposi
     }
 
     override suspend fun save(candidate: ExpenseCandidate): Long = withContext(Dispatchers.IO) {
-        val id = dbHelper.writableDatabase.insert("candidates", null, candidate.toContentValues())
-        _candidates.value = listOf(candidate.copy(id = id)) + _candidates.value
-        id
+        mutex.withLock {
+            val id = dbHelper.writableDatabase.insert("candidates", null, candidate.toContentValues())
+            _candidates.value = listOf(candidate.copy(id = id)) + _candidates.value
+            id
+        }
     }
 
     override suspend fun update(candidate: ExpenseCandidate) = withContext(Dispatchers.IO) {
-        dbHelper.writableDatabase.update(
-            "candidates", candidate.toContentValues(), "id = ?", arrayOf(candidate.id.toString())
-        )
-        _candidates.value = _candidates.value.map { if (it.id == candidate.id) candidate else it }
-        Unit
+        mutex.withLock {
+            dbHelper.writableDatabase.update(
+                "candidates", candidate.toContentValues(), "id = ?", arrayOf(candidate.id.toString())
+            )
+            _candidates.value = _candidates.value.map { if (it.id == candidate.id) candidate else it }
+        }
     }
 
     override fun findById(id: Long): ExpenseCandidate? = _candidates.value.find { it.id == id }

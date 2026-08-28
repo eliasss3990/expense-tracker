@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * Contenedor de dependencias manual (sin Hilt). Para el tamano actual del
@@ -48,13 +49,23 @@ class AppContainer(context: Context) {
     private val candidateRepository: CandidateRepository = localCandidateRepository
     private val activityRepository: ActivityRepository = localActivityRepository
 
-    val registerExpense = RegisterExpense(expenseRepository, activityRepository)
-    val createCandidate = CreateCandidate(candidateRepository, activityRepository)
-    val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository)
-    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository)
-    val rejectCandidate = RejectCandidate(candidateRepository, activityRepository)
-    val editExpense = EditExpense(expenseRepository, activityRepository)
-    val deleteExpense = DeleteExpense(expenseRepository, activityRepository)
+    // Un solo Mutex por dominio (candidatos, gastos), compartido entre
+    // TODOS los casos de uso que escriben sobre ese dominio - no uno por
+    // clase. Un mutex propio por clase solo serializaba llamadas
+    // repetidas al MISMO caso de uso; no impedia, por ejemplo, que
+    // ConfirmCandidate y EditCandidate operaran sobre el mismo candidato
+    // al mismo tiempo y duplicaran el Expense resultante. Ver el
+    // comentario en CreateCandidate.kt.
+    private val candidateWriteMutex = Mutex()
+    private val expenseWriteMutex = Mutex()
+
+    val registerExpense = RegisterExpense(expenseRepository, activityRepository, expenseWriteMutex)
+    val createCandidate = CreateCandidate(candidateRepository, activityRepository, candidateWriteMutex)
+    val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex)
+    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex)
+    val rejectCandidate = RejectCandidate(candidateRepository, activityRepository, candidateWriteMutex)
+    val editExpense = EditExpense(expenseRepository, activityRepository, expenseWriteMutex)
+    val deleteExpense = DeleteExpense(expenseRepository, activityRepository, expenseWriteMutex)
     val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository)
     val observeExpenses = ObserveExpenses(expenseRepository)
     val observeCandidates = ObserveCandidates(candidateRepository)

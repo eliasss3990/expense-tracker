@@ -173,12 +173,30 @@ class QuickAddOverlayService : Service() {
 
         val previousAmount = amountInput.text.toString()
         val previousMerchant = merchantInput.text.toString()
+        // Sin esto, si el usuario estaba escribiendo justo cuando el
+        // sistema cambia de tema (ej. modo oscuro automatico por horario
+        // a mitad de tipeo), el teclado se cerraba solo y el foco se
+        // perdia - las instancias nuevas de EditText no heredan el foco
+        // de las viejas, hay que restaurarlo a mano.
+        val wasEditingAmount = amountInput.isFocused
+        val wasEditingMerchant = merchantInput.isFocused
 
         runCatching { windowManager.removeView(rootView) }
         rootView = buildCardView()
         amountInput.setText(previousAmount)
         merchantInput.setText(previousMerchant)
         windowManager.addView(rootView, layoutParams)
+
+        val fieldToRefocus = when {
+            wasEditingAmount -> amountInput
+            wasEditingMerchant -> merchantInput
+            else -> null
+        }
+        fieldToRefocus?.let { field ->
+            field.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -262,7 +280,7 @@ class QuickAddOverlayService : Service() {
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(colors.onSurface)
         }
-        val closeButton = TextView(this).apply {
+        val closeButtonCircle = TextView(this).apply {
             text = "✕"
             textSize = 14f
             gravity = Gravity.CENTER
@@ -271,13 +289,24 @@ class QuickAddOverlayService : Service() {
                 shape = GradientDrawable.OVAL
                 setColor(colors.closeBg)
             }
+        }
+        // El circulo visual queda en 32dp (no cambia el diseño), pero el
+        // area tactil real es el FrameLayout que lo envuelve, de 48dp -
+        // el minimo recomendado de Android para no quedar por debajo del
+        // target de accesibilidad. Mismo patron ya usado para la manija
+        // de arrastre mas abajo en este archivo.
+        val closeButton = FrameLayout(this).apply {
+            addView(closeButtonCircle, FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER))
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Cerrar"
             setOnClickListener { closeOverlay() }
         }
         headerRow.addView(
             headerTitle,
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
         )
-        headerRow.addView(closeButton, LinearLayout.LayoutParams(dp(32), dp(32)))
+        headerRow.addView(closeButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         card.addView(headerRow, matchWidth())
 
         fun styleField(editText: EditText) {
@@ -294,6 +323,10 @@ class QuickAddOverlayService : Service() {
 
         amountInput = EditText(this).apply {
             hint = "Monto (₲)"
+            // El hint solo lo lee TalkBack hasta que hay texto cargado -
+            // contentDescription queda como label persistente despues de
+            // eso, algo que ninguna vista nativa de este overlay tenia.
+            contentDescription = "Monto en guaraníes"
             inputType = InputType.TYPE_CLASS_NUMBER
             styleField(this)
         }
@@ -302,6 +335,7 @@ class QuickAddOverlayService : Service() {
 
         merchantInput = EditText(this).apply {
             hint = "Comercio"
+            contentDescription = "Comercio"
             inputType = InputType.TYPE_CLASS_TEXT
             styleField(this)
         }
@@ -316,6 +350,11 @@ class QuickAddOverlayService : Service() {
                 textSize = 13f
                 setPadding(dp(12), dp(7), dp(12), dp(7))
                 applyChipStyle(this, category, selected = category == selectedCategory)
+                // Sin esto TalkBack anuncia el chip como texto plano, no
+                // como algo tocable/seleccionable con estado propio.
+                isClickable = true
+                isFocusable = true
+                contentDescription = "Categoría ${category.label}"
                 setOnClickListener {
                     val previous = selectedCategory
                     selectedCategory = category
