@@ -44,10 +44,16 @@ import kotlinx.coroutines.launch
  *
  * La ventana es FLAG_NOT_TOUCH_MODAL: los toques fuera de la tarjeta
  * pasan de largo a lo que sea que esté abajo (home, otra app), así se
- * puede seguir navegando con la ventanita flotando encima. Por default
- * también es FLAG_NOT_FOCUSABLE para no robarle el foco/teclado a otras
- * apps; se saca esa flag solo mientras un campo de texto está enfocado,
- * para que aparezca el teclado.
+ * puede seguir navegando con la ventanita flotando encima. Es focusable
+ * desde que se crea (no NOT_FOCUSABLE) para que el teclado responda al
+ * primer toque - alternarla dinámicamente sonaba mejor en teoría, pero
+ * `updateViewLayout` tarda un viaje de ida y vuelta al sistema en
+ * aplicarse, y pedir el foco en el mismo instante siempre perdía esa
+ * carrera la primera vez. Focusable no bloquea navegar otras apps
+ * (eso lo controla FLAG_NOT_TOUCH_MODAL, es independiente) - como mucho,
+ * si estabas escribiendo en otra app en el momento exacto en que se abre
+ * esta ventanita, esa app pierde el foco de teclado, un caso de borde
+ * aceptable frente al bug real del doble toque.
  */
 class QuickAddOverlayService : Service() {
 
@@ -76,8 +82,7 @@ class QuickAddOverlayService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
@@ -96,32 +101,11 @@ class QuickAddOverlayService : Service() {
         super.onDestroy()
     }
 
-    /**
-     * Sin esto el teclado nunca aparece: la ventana es NOT_FOCUSABLE por
-     * default para no bloquear el resto del celular. Sacamos esa flag
-     * recién cuando tocan un campo por primera vez, y queda así (no se
-     * vuelve a poner NOT_FOCUSABLE al perder el foco entre campos) - eso
-     * es justamente lo que causaba el bug del doble toque: si la volvés a
-     * poner al cambiar de campo, el toque en el segundo campo también
-     * tiene que esperar a que la ventana vuelva a ser focusable.
-     *
-     * `updateViewLayout` es asíncrono del lado del sistema: pedir el foco
-     * y mostrar el teclado en la misma llamada corre una carrera contra
-     * eso y pierde la primera vez. `post{}` alcanza porque solo hace
-     * falta esperar al siguiente ciclo del message loop, no un delay fijo.
-     */
     private fun allowKeyboardFocus(editText: EditText) {
         editText.setOnClickListener {
-            val wasFocusable = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0
-            if (!wasFocusable) {
-                layoutParams.flags = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                windowManager.updateViewLayout(rootView, layoutParams)
-            }
-            editText.post {
-                editText.requestFocus()
-                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
-            }
+            editText.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
         }
     }
 
