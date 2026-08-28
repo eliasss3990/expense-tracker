@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -47,12 +49,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -454,9 +459,8 @@ private fun TrayScreen() {
 
 @Composable
 private fun PendingCard(candidate: ExpenseCandidate) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val category = Category.fromId(candidate.categorySuggestion)
+    var isEditing by remember(candidate.id) { mutableStateOf(false) }
 
     Card(
         Modifier.fillMaxWidth(),
@@ -465,59 +469,147 @@ private fun PendingCard(candidate: ExpenseCandidate) {
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CategoryAvatar(category)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(candidate.merchant, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        candidate.sourceApp.orEmpty(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(
-                    "₲%,d".format(candidate.amount),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+            if (isEditing) {
+                InlineEditForm(
+                    candidate = candidate,
+                    onCancel = { isEditing = false },
+                    onSave = { amount, merchant, category ->
+                        scope.launch {
+                            ServiceLocator.get().editCandidate(candidate.id, amount, merchant, category.id)
+                        }
+                    },
+                )
+            } else {
+                PendingCardSummary(
+                    candidate = candidate,
+                    onAccept = { scope.launch { ServiceLocator.get().confirmCandidate(candidate.id) } },
+                    onEdit = { isEditing = true },
+                    onReject = { scope.launch { ServiceLocator.get().rejectCandidate(candidate.id) } },
                 )
             }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { scope.launch { ServiceLocator.get().confirmCandidate(candidate.id) } },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(vertical = 10.dp),
-                ) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Aceptar")
-                }
-                OutlinedButton(
-                    onClick = {
-                        val intent = Intent(context, QuickAddActivity::class.java)
-                        intent.putExtra(EXTRA_EDIT_CANDIDATE_ID, candidate.id)
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(vertical = 10.dp),
-                ) {
-                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Editar")
-                }
-                OutlinedButton(
-                    onClick = { scope.launch { ServiceLocator.get().rejectCandidate(candidate.id) } },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(vertical = 10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Rechazar")
-                }
-            }
         }
+    }
+}
+
+@Composable
+private fun PendingCardSummary(
+    candidate: ExpenseCandidate,
+    onAccept: () -> Unit,
+    onEdit: () -> Unit,
+    onReject: () -> Unit,
+) {
+    val category = Category.fromId(candidate.categorySuggestion)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CategoryAvatar(category)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(candidate.merchant, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                candidate.sourceApp.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            "₲%,d".format(candidate.amount),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    Spacer(Modifier.height(14.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = onAccept,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(vertical = 10.dp),
+        ) {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Aceptar")
+        }
+        OutlinedButton(
+            onClick = onEdit,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(vertical = 10.dp),
+        ) {
+            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Editar")
+        }
+        OutlinedButton(
+            onClick = onReject,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(vertical = 10.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Rechazar")
+        }
+    }
+}
+
+/**
+ * Formulario de edición inline, dentro de la misma tarjeta de la Bandeja
+ * - antes "Editar" abría QuickAddActivity flotando encima de esta misma
+ * tarjeta (que seguía mostrando sus propios Aceptar/Editar/Rechazar
+ * detrás), confuso: dos controles superpuestos para el mismo candidato.
+ */
+@Composable
+private fun InlineEditForm(
+    candidate: ExpenseCandidate,
+    onCancel: () -> Unit,
+    onSave: (amount: Long, merchant: String, category: Category) -> Unit,
+) {
+    var amountText by remember { mutableStateOf(candidate.amount.toString()) }
+    var merchantText by remember { mutableStateOf(candidate.merchant) }
+    var category by remember { mutableStateOf(Category.fromId(candidate.categorySuggestion)) }
+
+    Text("Editar gasto", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    OutlinedTextField(
+        value = amountText,
+        onValueChange = { amountText = it.filter(Char::isDigit) },
+        label = { Text("Monto (₲)") },
+        singleLine = true,
+        modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = merchantText,
+        onValueChange = { merchantText = it },
+        label = { Text("Comercio") },
+        singleLine = true,
+        modifier = Modifier.padding(top = 10.dp).fillMaxWidth(),
+    )
+    Row(
+        Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Category.entries.forEach { option ->
+            val selected = option == category
+            FilterChip(
+                selected = selected,
+                onClick = { category = option },
+                label = { Text(option.label) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
+                    selectedLabelColor = option.brandColor(),
+                ),
+            )
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(top = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancelar") }
+        Button(
+            onClick = {
+                val amount = amountText.toLongOrNull() ?: 0
+                if (amount <= 0 || merchantText.isBlank()) return@Button
+                onSave(amount, merchantText, category)
+            },
+            modifier = Modifier.weight(1f),
+        ) { Text("Guardar") }
     }
 }
 
