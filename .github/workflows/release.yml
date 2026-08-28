@@ -24,6 +24,11 @@ jobs:
           java-version: "21"
 
       - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Instalar paquetes del SDK necesarios
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-37" "build-tools;37.0.0" > /dev/null
 
       - name: Leer versionName de app/build.gradle.kts
         id: version
