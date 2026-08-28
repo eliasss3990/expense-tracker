@@ -78,4 +78,25 @@ class UpdateCheckerTest {
         assertFalse(isNewerVersion("1.2.0-beta.1", "1.2.0-beta.2"))
         assertFalse(isNewerVersion("1.2.0-beta.2", "1.2.0-beta.1"))
     }
+
+    // Casos de borde de splitVersionCore señalados en la revisión de los
+    // fixes de la auditoría (no eran un bug, pero no estaban cubiertos).
+
+    @Test
+    fun `sufijo pre-release sin nucleo numerico (solo -beta) no crashea y no cuenta como mas nuevo`() {
+        assertFalse(isNewerVersion("-beta", "0.0.0"))
+    }
+
+    @Test
+    fun `multiples guiones - solo el primero separa el nucleo del sufijo`() {
+        // "1.2.0-beta-2" y "1.2.0-rc-1" tienen el mismo nucleo (1.2.0) y
+        // ambos son pre-release, asi que ninguno es "mas nuevo" que el otro.
+        assertFalse(isNewerVersion("1.2.0-beta-2", "1.2.0-rc-1"))
+        assertTrue(isNewerVersion("1.3.0-beta-2", "1.2.0-rc-1"))
+    }
+
+    @Test
+    fun `guion como primer caracter no crashea`() {
+        assertFalse(isNewerVersion("-1.2.0", "0.0.0"))
+    }
 }
