@@ -30,6 +30,7 @@ jobs:
 
   validate:
     name: Validate
+    if: github.base_ref == 'next'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
