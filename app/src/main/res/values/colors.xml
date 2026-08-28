@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="brand_primary">#FF4338CA</color>
+    <!-- Extremo mas oscuro del degradado del icono/splash - fondo del
+    splash nativo, que solo acepta un color solido, no un degradado. -->
+    <color name="splash_background">#FF3730A3</color>
 </resources>

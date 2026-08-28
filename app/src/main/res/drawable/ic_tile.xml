@@ -3,12 +3,16 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Mismo check de la marca (ícono/splash), como forma sólida en vez -->
-    <!-- de círculo+check: las tiles de Quick Settings se pintan con un -->
-    <!-- solo color forzado por el sistema, así que un "agujero" de check -->
-    <!-- dentro de un círculo del mismo color se volvería invisible. -->
+    <!-- Mismo check de la marca (ic_brand_mark) pero como trazo grueso de
+    puntas redondeadas en vez de polígonos rellenos - las tiles de Quick
+    Settings se pintan con un solo color forzado por el sistema, y un
+    trazo (en vez de un "agujero" circulo+check) tinta bien igual. Mismo
+    lenguaje visual que el check del ícono/splash, solo escalado. -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M6.72,13.08 L8.28,11.52 L11.28,14.52 L9.72,16.08 Z
-                           M11.31,16.05 L9.69,14.55 L17.19,6.45 L18.81,7.95 Z" />
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M6.7,13.1 L9.7,16.1 L18.8,6.4" />
 </vector>

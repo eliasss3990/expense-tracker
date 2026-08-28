@@ -4,6 +4,9 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Base: degradado diagonal de 3 puntos (índigo -> violeta -> índigo
+    profundo) en vez del de 2 puntos anterior - más profundidad y menos
+    "plano" que el fondo liso original. -->
     <path android:pathData="M0,0L108,0L108,108L0,108Z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -13,7 +16,37 @@
                 android:endX="108"
                 android:endY="108"
                 android:startColor="#6366F1"
+                android:centerColor="#8B5CF6"
                 android:endColor="#3730A3" />
+        </aapt:attr>
+    </path>
+    <!-- Aro fantasma: una "moneda" gigante, mayormente fuera de cuadro,
+    abajo a la derecha - repite el motivo de la marca a otra escala y le
+    da textura al fondo ahora que el disco principal es chico. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.10"
+        android:strokeWidth="7"
+        android:pathData="M62,146 A58,58 0 1,1 178,146 A58,58 0 1,1 62,146 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.06"
+        android:strokeWidth="3"
+        android:pathData="M84,146 A36,36 0 1,1 156,146 A36,36 0 1,1 84,146 Z" />
+    <!-- Resplandor suave arriba a la izquierda, simulando una luz
+    incidiendo sobre la moneda - le da volumen al fondo sin necesitar
+    sombras raster. -->
+    <path android:pathData="M-20,-20L128,-20L128,128L-20,128Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="34"
+                android:centerY="30"
+                android:gradientRadius="76"
+                android:startColor="#40FFFFFF"
+                android:endColor="#00FFFFFF" />
         </aapt:attr>
     </path>
 </vector>
