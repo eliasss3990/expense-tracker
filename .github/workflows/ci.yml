@@ -1,9 +1,11 @@
 name: CI
 
+# Solo corre en Pull Requests, nunca en push directo - un push directo a
+# next/main no debería existir (las ramas están protegidas), y si
+# llegara a pasar no tiene sentido validar algo que ya se mergeó. main
+# tiene su propio disparador de push en release.yml (build+firma+publish).
 on:
   pull_request:
-    branches: [next, main]
-  push:
     branches: [next, main]
 
 concurrency:
@@ -15,7 +17,7 @@ jobs:
   # consolidamos ahí antes de tocar la rama que dispara releases.
   enforce-main-source:
     name: Solo next puede mergear a main
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    if: github.base_ref == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -56,6 +58,7 @@ jobs:
 
   unit-tests:
     name: Unit tests
+    if: github.base_ref == 'next'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -91,6 +94,7 @@ jobs:
 
   build-debug:
     name: Build debug APK
+    if: github.base_ref == 'next'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
