@@ -1,6 +1,7 @@
 package com.eliasgonzalez.expensetracker.quicksettings
 
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -11,6 +12,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
@@ -39,6 +41,13 @@ import kotlinx.coroutines.launch
  * ComposeView dentro de un Service (sin Activity) exige fabricar a mano
  * un LifecycleOwner/ViewModelStoreOwner/SavedStateRegistryOwner propio -
  * mucho más código que este formulario chico no justifica.
+ *
+ * La ventana es FLAG_NOT_TOUCH_MODAL: los toques fuera de la tarjeta
+ * pasan de largo a lo que sea que esté abajo (home, otra app), así se
+ * puede seguir navegando con la ventanita flotando encima. Por default
+ * también es FLAG_NOT_FOCUSABLE para no robarle el foco/teclado a otras
+ * apps; se saca esa flag solo mientras un campo de texto está enfocado,
+ * para que aparezca el teclado.
  */
 class QuickAddOverlayService : Service() {
 
@@ -53,17 +62,26 @@ class QuickAddOverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        // Ancho y posición dinámicos según la pantalla real del celular, no
+        // valores en dp fijos - se ven bien en cualquier tamaño.
+        val screenWidth = resources.displayMetrics.widthPixels
+        val screenHeight = resources.displayMetrics.heightPixels
+        val cardWidthPx = (screenWidth * 0.82f).toInt()
+        val topOffsetPx = (screenHeight * 0.08f).toInt()
+
         rootView = buildCardView()
         layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            cardWidthPx,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 60
-            y = 400
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = topOffsetPx
         }
         windowManager.addView(rootView, layoutParams)
     }
@@ -78,9 +96,41 @@ class QuickAddOverlayService : Service() {
         super.onDestroy()
     }
 
+    /** Sin esto el teclado nunca aparece: la ventana es NOT_FOCUSABLE por
+     * default para no bloquear el resto del celular. Sacamos esa flag
+     * justo antes de pedir el foco, y la volvemos a poner al perderlo. */
+    private fun allowKeyboardFocus(editText: EditText) {
+        editText.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                layoutParams.flags = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                windowManager.updateViewLayout(rootView, layoutParams)
+            } else {
+                layoutParams.flags = layoutParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                windowManager.updateViewLayout(rootView, layoutParams)
+            }
+        }
+        editText.setOnClickListener {
+            layoutParams.flags = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            windowManager.updateViewLayout(rootView, layoutParams)
+            editText.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+
+    private fun closeOverlay() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(rootView.windowToken, 0)
+        stopSelf()
+    }
+
     private fun buildCardView(): View {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
+        fun matchWidth() = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        )
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -92,26 +142,43 @@ class QuickAddOverlayService : Service() {
             elevation = dp(8).toFloat()
         }
 
-        val header = TextView(this).apply {
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(12))
+        }
+        val headerTitle = TextView(this).apply {
             text = "☰  Nuevo gasto"
             textSize = 16f
             setTextColor(Color.DKGRAY)
-            setPadding(0, 0, 0, dp(12))
         }
-        attachDragHandling(header)
-        card.addView(header)
+        attachDragHandling(headerTitle)
+        val closeButton = TextView(this).apply {
+            text = "✕"
+            textSize = 16f
+            setTextColor(Color.DKGRAY)
+            setPadding(dp(12), 0, 0, 0)
+            setOnClickListener { closeOverlay() }
+        }
+        headerRow.addView(
+            headerTitle,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        headerRow.addView(closeButton)
+        card.addView(headerRow, matchWidth())
 
         val amountInput = EditText(this).apply {
             hint = "Monto (₲)"
             inputType = InputType.TYPE_CLASS_NUMBER
         }
-        card.addView(amountInput)
+        allowKeyboardFocus(amountInput)
+        card.addView(amountInput, matchWidth())
 
         val merchantInput = EditText(this).apply {
             hint = "Comercio"
             inputType = InputType.TYPE_CLASS_TEXT
         }
-        card.addView(merchantInput)
+        allowKeyboardFocus(merchantInput)
+        card.addView(merchantInput, matchWidth())
 
         val categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val categoryChips = mutableMapOf<Category, TextView>()
@@ -137,14 +204,15 @@ class QuickAddOverlayService : Service() {
         }
         val categoryScroll = HorizontalScrollView(this).apply {
             setPadding(0, dp(12), 0, dp(12))
+            isHorizontalScrollBarEnabled = false
             addView(categoryRow)
         }
-        card.addView(categoryScroll)
+        card.addView(categoryScroll, matchWidth())
 
         val buttonsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val cancelButton = Button(this).apply {
             text = "Cancelar"
-            setOnClickListener { stopSelf() }
+            setOnClickListener { closeOverlay() }
         }
         val saveButton = Button(this).apply {
             text = "Guardar"
@@ -167,7 +235,7 @@ class QuickAddOverlayService : Service() {
                             source = ExpenseSource.QUICK_TILE,
                         )
                     )
-                    stopSelf()
+                    closeOverlay()
                 }
             }
         }

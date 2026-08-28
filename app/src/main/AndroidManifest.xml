@@ -28,6 +28,11 @@
             android:documentLaunchMode="always"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <activity
+            android:name=".quicksettings.QuickAddTrampolineActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <service
             android:name=".notification.ExpenseNotificationListenerService"
             android:exported="false"
