@@ -53,13 +53,13 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
             timestamp = sbn.postTime,
         )
 
-        if (!GenericPurchaseParser.canHandle(context)) return
-        val result = GenericPurchaseParser.parse(context) ?: return
+        val result = ParserEngine.parse(context) ?: return
 
         val candidate = ExpenseCandidate(
             amount = result.amount,
             currency = result.currency,
             merchant = result.merchant,
+            merchantConfident = result.merchantConfident,
             occurredAt = context.timestamp,
             detectedAt = context.timestamp,
             sourceType = ExpenseSource.NOTIFICATION,
