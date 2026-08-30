@@ -117,6 +117,7 @@ private fun categoryColor(category: Category): Int = when (category) {
     Category.SHOPPING -> Color.parseColor("#F97316")
     Category.HEALTH -> Color.parseColor("#14B8A6")
     Category.EDUCATION -> Color.parseColor("#0EA5E9")
+    Category.MECHANIC -> Color.parseColor("#78716C")
     Category.OTHER -> Color.parseColor("#6B7280")
 }
 

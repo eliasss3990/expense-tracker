@@ -1,6 +1,7 @@
 package com.eliasgonzalez.expensetracker.ui.theme
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.LocalGasStation
@@ -27,6 +28,7 @@ fun Category.brandColor(): Color = when (this) {
     Category.SHOPPING -> CategoryPalette.SHOPPING
     Category.HEALTH -> CategoryPalette.HEALTH
     Category.EDUCATION -> CategoryPalette.EDUCATION
+    Category.MECHANIC -> CategoryPalette.MECHANIC
     Category.OTHER -> CategoryPalette.OTHER
 }
 
@@ -40,5 +42,6 @@ fun Category.icon(): ImageVector = when (this) {
     Category.SHOPPING -> Icons.Filled.ShoppingBag
     Category.HEALTH -> Icons.Filled.LocalHospital
     Category.EDUCATION -> Icons.Filled.School
+    Category.MECHANIC -> Icons.Filled.Build
     Category.OTHER -> Icons.Filled.QuestionMark
 }
