@@ -129,6 +129,7 @@ class QuickAddOverlayService : Service() {
     private lateinit var layoutParams: WindowManager.LayoutParams
     private lateinit var amountInput: EditText
     private lateinit var merchantInput: EditText
+    private lateinit var descriptionInput: EditText
     private var selectedCategory: Category = Category.OTHER
     private val palette: OverlayPalette
         get() {
@@ -174,6 +175,7 @@ class QuickAddOverlayService : Service() {
 
         val previousAmount = amountInput.text.toString()
         val previousMerchant = merchantInput.text.toString()
+        val previousDescription = descriptionInput.text.toString()
         // Sin esto, si el usuario estaba escribiendo justo cuando el
         // sistema cambia de tema (ej. modo oscuro automatico por horario
         // a mitad de tipeo), el teclado se cerraba solo y el foco se
@@ -181,16 +183,19 @@ class QuickAddOverlayService : Service() {
         // de las viejas, hay que restaurarlo a mano.
         val wasEditingAmount = amountInput.isFocused
         val wasEditingMerchant = merchantInput.isFocused
+        val wasEditingDescription = descriptionInput.isFocused
 
         runCatching { windowManager.removeView(rootView) }
         rootView = buildCardView()
         amountInput.setText(previousAmount)
         merchantInput.setText(previousMerchant)
+        descriptionInput.setText(previousDescription)
         windowManager.addView(rootView, layoutParams)
 
         val fieldToRefocus = when {
             wasEditingAmount -> amountInput
             wasEditingMerchant -> merchantInput
+            wasEditingDescription -> descriptionInput
             else -> null
         }
         fieldToRefocus?.let { field ->
@@ -341,7 +346,18 @@ class QuickAddOverlayService : Service() {
             styleField(this)
         }
         allowKeyboardFocus(merchantInput)
-        card.addView(merchantInput, matchWidth())
+        card.addView(merchantInput, matchWidth().apply { bottomMargin = dp(10) })
+
+        descriptionInput = EditText(this).apply {
+            hint = "Descripción"
+            contentDescription = "Descripción"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 2
+            maxLines = 4
+            styleField(this)
+        }
+        allowKeyboardFocus(descriptionInput)
+        card.addView(descriptionInput, matchWidth())
 
         val categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val categoryChips = mutableMapOf<Category, TextView>()
@@ -405,6 +421,7 @@ class QuickAddOverlayService : Service() {
             setOnClickListener {
                 val amount = amountInput.text.toString().toLongOrNull() ?: 0
                 val merchant = merchantInput.text.toString().trim()
+                val description = descriptionInput.text.toString().trim()
                 if (amount <= 0 || merchant.isBlank()) {
                     Toast.makeText(this@QuickAddOverlayService, "Completá monto y comercio", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
@@ -416,6 +433,7 @@ class QuickAddOverlayService : Service() {
                             amount = amount,
                             merchant = merchant,
                             categoryId = selectedCategory.id,
+                            description = description,
                             occurredAt = now,
                             createdAt = now,
                             source = ExpenseSource.QUICK_TILE,

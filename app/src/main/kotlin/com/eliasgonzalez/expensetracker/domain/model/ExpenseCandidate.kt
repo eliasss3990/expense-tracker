@@ -14,6 +14,7 @@ data class ExpenseCandidate(
     val currency: String = "PYG",
     val merchant: String,
     val categorySuggestion: String = Category.OTHER.id,
+    val description: String = "",
     val occurredAt: Long,
     val detectedAt: Long,
     val sourceType: ExpenseSource,

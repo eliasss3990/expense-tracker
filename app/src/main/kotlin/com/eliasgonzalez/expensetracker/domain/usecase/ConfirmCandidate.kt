@@ -40,6 +40,7 @@ class ConfirmCandidate(
                 currency = candidate.currency,
                 merchant = candidate.merchant,
                 categoryId = candidate.categorySuggestion,
+                description = candidate.description,
                 occurredAt = candidate.occurredAt,
                 createdAt = now,
                 source = candidate.sourceType,
