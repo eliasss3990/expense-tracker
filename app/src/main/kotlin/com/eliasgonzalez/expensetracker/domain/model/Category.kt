@@ -15,6 +15,7 @@ enum class Category(val id: String, val label: String) {
     SHOPPING("SHOPPING", "Compras"),
     HEALTH("HEALTH", "Salud"),
     EDUCATION("EDUCATION", "Educación"),
+    MECHANIC("MECHANIC", "Mecánico"),
     OTHER("OTHER", "Otro");
 
     companion object {
