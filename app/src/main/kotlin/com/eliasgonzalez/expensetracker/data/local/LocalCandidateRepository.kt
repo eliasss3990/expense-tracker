@@ -55,6 +55,7 @@ class LocalCandidateRepository(private val dbHelper: DbHelper) : CandidateReposi
         put("currency", currency)
         put("merchant", merchant)
         put("category_suggestion", categorySuggestion)
+        put("description", description)
         put("occurred_at", occurredAt)
         put("detected_at", detectedAt)
         put("source_type", sourceType.name)
@@ -70,6 +71,7 @@ class LocalCandidateRepository(private val dbHelper: DbHelper) : CandidateReposi
         currency = getString(getColumnIndexOrThrow("currency")),
         merchant = getString(getColumnIndexOrThrow("merchant")),
         categorySuggestion = getString(getColumnIndexOrThrow("category_suggestion")),
+        description = getString(getColumnIndexOrThrow("description")),
         occurredAt = getLong(getColumnIndexOrThrow("occurred_at")),
         detectedAt = getLong(getColumnIndexOrThrow("detected_at")),
         sourceType = ExpenseSource.valueOf(getString(getColumnIndexOrThrow("source_type"))),

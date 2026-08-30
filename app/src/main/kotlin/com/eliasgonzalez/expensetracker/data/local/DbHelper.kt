@@ -44,6 +44,7 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
                 currency TEXT NOT NULL,
                 merchant TEXT NOT NULL,
                 category_suggestion TEXT NOT NULL,
+                description TEXT NOT NULL,
                 occurred_at INTEGER NOT NULL,
                 detected_at INTEGER NOT NULL,
                 source_type TEXT NOT NULL,
@@ -79,6 +80,9 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
 
     companion object {
         private const val DB_NAME = "expense_tracker.db"
-        private const val DB_VERSION = 1
+        // v2: agrega `description` a `candidates` (paridad con `expenses`,
+        // que ya la tenia). Sin usuarios reales todavia, asi que onUpgrade
+        // sigue siendo dropear y recrear en vez de un ALTER TABLE real.
+        private const val DB_VERSION = 2
     }
 }
