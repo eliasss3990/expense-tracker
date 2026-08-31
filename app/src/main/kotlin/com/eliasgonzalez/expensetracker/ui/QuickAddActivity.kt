@@ -77,6 +77,7 @@ private fun QuickAddScreen(
 ) {
     var amountText by remember { mutableStateOf(editing?.amount?.toString().orEmpty()) }
     var merchantText by remember { mutableStateOf(editing?.merchant.orEmpty()) }
+    var descriptionText by remember { mutableStateOf(editing?.description.orEmpty()) }
     var category by remember {
         mutableStateOf(Category.fromId(editing?.categorySuggestion ?: Category.OTHER.id))
     }
@@ -108,6 +109,14 @@ private fun QuickAddScreen(
                     onValueChange = { merchantText = it },
                     label = { Text("Comercio") },
                     singleLine = true,
+                    modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = descriptionText,
+                    onValueChange = { descriptionText = it },
+                    label = { Text("Descripción") },
+                    minLines = 2,
+                    maxLines = 4,
                     modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
                 )
                 Text(
@@ -147,7 +156,13 @@ private fun QuickAddScreen(
                             scope.launch {
                                 val container = ServiceLocator.get()
                                 if (editing != null) {
-                                    container.editCandidate(editing.id, amount, merchantText, category.id)
+                                    container.editCandidate(
+                                        editing.id,
+                                        amount,
+                                        merchantText,
+                                        category.id,
+                                        descriptionText.trim(),
+                                    )
                                 } else {
                                     val now = System.currentTimeMillis()
                                     container.registerExpense(
@@ -155,6 +170,7 @@ private fun QuickAddScreen(
                                             amount = amount,
                                             merchant = merchantText,
                                             categoryId = category.id,
+                                            description = descriptionText.trim(),
                                             occurredAt = now,
                                             createdAt = now,
                                             source = ExpenseSource.QUICK_TILE,

@@ -208,6 +208,43 @@ class ConfirmCandidateTest {
         assertEquals(expenseId, entry.expenseId)
     }
 
+    // ----- Propagacion de campos del candidato al gasto -----
+
+    @Test
+    fun `el gasto al confirmar hereda la descripcion del candidato`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val expenses = FakeExpenseRepository()
+        val activity = FakeActivityRepository()
+        val confirmCandidate = ConfirmCandidate(candidates, RegisterExpense(expenses, activity), activity)
+        val candidateId = candidates.save(
+            ExpenseCandidate(
+                amount = 50_000,
+                merchant = "Farmacia",
+                description = "Pastillas para el dolor de cabeza",
+                occurredAt = 1L,
+                detectedAt = 1L,
+                sourceType = ExpenseSource.NOTIFICATION,
+            )
+        )
+
+        confirmCandidate(candidateId)
+
+        assertEquals("Pastillas para el dolor de cabeza", expenses.expenses.value.single().description)
+    }
+
+    @Test
+    fun `el gasto al confirmar sin descripcion en el candidato queda con descripcion vacia`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val expenses = FakeExpenseRepository()
+        val activity = FakeActivityRepository()
+        val confirmCandidate = ConfirmCandidate(candidates, RegisterExpense(expenses, activity), activity)
+        val candidateId = candidates.save(pendingCandidate())
+
+        confirmCandidate(candidateId)
+
+        assertEquals("", expenses.expenses.value.single().description)
+    }
+
     @Test
     fun `condicion de carrera - dos confirmaciones concurrentes del mismo candidato NO duplican el gasto`() = runTest {
         // Regresion: ConfirmCandidate protege con un Mutex el tramo lectura del

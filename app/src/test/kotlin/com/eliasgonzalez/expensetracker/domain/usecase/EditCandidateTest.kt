@@ -262,6 +262,37 @@ class EditCandidateTest {
         assertEquals(expenseId, entry.expenseId)
     }
 
+    // ----- Propagacion de campos del candidato al gasto -----
+
+    @Test
+    fun `editar con descripcion la propaga al gasto y la persiste en el candidato`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val expenses = FakeExpenseRepository()
+        val activity = FakeActivityRepository()
+        val registerExpense = RegisterExpense(expenses, activity)
+        val editCandidate = EditCandidate(candidates, registerExpense, activity)
+        val candidateId = candidates.save(pendingCandidate())
+
+        editCandidate(candidateId, amount = 1_000L, merchant = "Comercio", description = "Almuerzo con el equipo")
+
+        assertEquals("Almuerzo con el equipo", expenses.expenses.value.first().description)
+        assertEquals("Almuerzo con el equipo", candidates.findById(candidateId)?.description)
+    }
+
+    @Test
+    fun `editar sin pasar descripcion queda con descripcion vacia por default`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val expenses = FakeExpenseRepository()
+        val activity = FakeActivityRepository()
+        val registerExpense = RegisterExpense(expenses, activity)
+        val editCandidate = EditCandidate(candidates, registerExpense, activity)
+        val candidateId = candidates.save(pendingCandidate())
+
+        editCandidate(candidateId, amount = 1_000L, merchant = "Comercio")
+
+        assertEquals("", expenses.expenses.value.first().description)
+    }
+
     @Test
     fun `condicion de carrera - dos ediciones concurrentes del mismo candidato NO duplican el gasto`() = runTest {
         // Regresion: EditCandidate protege con un Mutex el tramo lectura del

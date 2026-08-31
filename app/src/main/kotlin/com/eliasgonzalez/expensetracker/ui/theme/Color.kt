@@ -32,5 +32,6 @@ object CategoryPalette {
     val SHOPPING = Color(0xFFF97316)
     val HEALTH = Color(0xFF14B8A6)
     val EDUCATION = Color(0xFF0EA5E9)
+    val MECHANIC = Color(0xFF78716C)
     val OTHER = Color(0xFF6B7280)
 }

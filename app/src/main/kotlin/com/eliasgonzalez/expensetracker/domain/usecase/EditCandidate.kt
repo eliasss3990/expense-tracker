@@ -29,6 +29,7 @@ class EditCandidate(
         amount: Long,
         merchant: String,
         categoryId: String = "",
+        description: String = "",
     ): Long? = mutex.withLock {
         val candidate = candidates.findById(candidateId) ?: return@withLock null
         if (candidate.status != CandidateStatus.PENDING) return@withLock null
@@ -41,6 +42,7 @@ class EditCandidate(
                 currency = candidate.currency,
                 merchant = merchant,
                 categoryId = finalCategoryId,
+                description = description,
                 occurredAt = candidate.occurredAt,
                 createdAt = now,
                 source = candidate.sourceType,
@@ -53,6 +55,7 @@ class EditCandidate(
                 amount = amount,
                 merchant = merchant,
                 categorySuggestion = finalCategoryId,
+                description = description,
             )
         )
         activity.record(
