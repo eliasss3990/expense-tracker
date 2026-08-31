@@ -69,20 +69,26 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
         )
     }
 
+    // INCIDENTE REAL (2026-08-31): el "sin usuarios reales todavia" de la
+    // version anterior de este comentario era falso -- el DB_VERSION 1->2
+    // (agregar `description` a `candidates`) corrio contra la base de un
+    // usuario real y el DROP TABLE de mas abajo (que YA NO EXISTE, esto
+    // documenta que paso) le borro todos los gastos guardados. Nunca mas:
+    // de aca en adelante, onUpgrade SIEMPRE hace un ALTER TABLE real por
+    // cada version intermedia, nunca dropea nada. Al agregar la proxima
+    // migracion, sumar un bloque `if (oldVersion < N) { ... }` nuevo -- no
+    // reemplazar los anteriores, para que actualizar desde CUALQUIER
+    // version vieja instalada en un celular real siga funcionando.
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Sin usuarios reales todavia - en la primera migracion real esto
-        // pasa a ser ALTER TABLE en vez de dropear todo.
-        db.execSQL("DROP TABLE IF EXISTS expenses")
-        db.execSQL("DROP TABLE IF EXISTS candidates")
-        db.execSQL("DROP TABLE IF EXISTS activity_log")
-        onCreate(db)
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE candidates ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+        }
     }
 
     companion object {
         private const val DB_NAME = "expense_tracker.db"
         // v2: agrega `description` a `candidates` (paridad con `expenses`,
-        // que ya la tenia). Sin usuarios reales todavia, asi que onUpgrade
-        // sigue siendo dropear y recrear en vez de un ALTER TABLE real.
+        // que ya la tenia) -- ver onUpgrade, es un ALTER TABLE real.
         private const val DB_VERSION = 2
     }
 }
