@@ -12,8 +12,17 @@ import kotlinx.coroutines.flow.map
  */
 class ObserveCatalog(private val catalog: CatalogRepository) {
     operator fun invoke(kind: String, onlyActive: Boolean = true): Flow<List<CatalogEntry>> =
-        catalog.entries.map { all ->
-            all.filter { it.kind == kind && (!onlyActive || it.active) }
-                .sortedBy { it.sortOrder }
-        }
+        catalog.entries.map { all -> select(all, kind, onlyActive) }
+
+    /**
+     * Lectura puntual para quien no puede suscribirse a un Flow (vistas
+     * nativas del overlay). Puede venir vacia si el catalogo aun no cargo:
+     * quien la use decide el fallback.
+     */
+    fun snapshot(kind: String, onlyActive: Boolean = true): List<CatalogEntry> =
+        select(catalog.entries.value, kind, onlyActive)
+
+    private fun select(all: List<CatalogEntry>, kind: String, onlyActive: Boolean) =
+        all.filter { it.kind == kind && (!onlyActive || it.active) }
+            .sortedBy { it.sortOrder }
 }

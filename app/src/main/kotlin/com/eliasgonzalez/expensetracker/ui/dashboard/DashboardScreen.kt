@@ -42,7 +42,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
-import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.filter.DateRangeFilter
 import com.eliasgonzalez.expensetracker.domain.filter.availableMonths
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
@@ -51,7 +50,8 @@ import com.eliasgonzalez.expensetracker.ui.common.EmptyState
 import com.eliasgonzalez.expensetracker.ui.common.SectionCard
 import com.eliasgonzalez.expensetracker.domain.filter.matchesDateRange
 import com.eliasgonzalez.expensetracker.ui.theme.MoneyDisplayStyle
-import com.eliasgonzalez.expensetracker.ui.theme.brandColor
+import com.eliasgonzalez.expensetracker.ui.theme.CategoryUi
+import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryLookup
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.YearMonth
@@ -90,8 +90,9 @@ internal fun DashboardScreen() {
         YearMonth.now().month.getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es"))
             .replaceFirstChar { it.uppercase() } + " " + YearMonth.now().year
     }
-    val byCategory = remember(thisMonth) {
-        thisMonth.groupBy { Category.fromId(it.categoryId) }
+    val categoryLookup = rememberCategoryLookup()
+    val byCategory = remember(thisMonth, categoryLookup) {
+        thisMonth.groupBy { categoryLookup(it.categoryId) }
             .mapValues { (_, list) -> list.sumOf { it.amount } }
             .toList()
             .sortedByDescending { it.second }
@@ -246,6 +247,7 @@ internal fun DashboardScreen() {
             availableMonths = remember(expenses) { availableMonths(expenses) },
             onSelectMonth = { dateRangeFilter = DateRangeFilter.SPECIFIC_MONTH; specificMonth = it },
             selectedCategories = categoryFilter,
+            usedCategoryIds = remember(expenses) { expenses.map { it.categoryId }.toSet() },
             onToggleCategory = { id ->
                 categoryFilter = if (id in categoryFilter) categoryFilter - id else categoryFilter + id
             },
@@ -256,7 +258,7 @@ internal fun DashboardScreen() {
 }
 
 @Composable
-private fun CategoryBreakdownRow(category: Category, amount: Long, totalAmount: Long) {
+private fun CategoryBreakdownRow(category: CategoryUi, amount: Long, totalAmount: Long) {
     val fraction = if (totalAmount > 0) amount.toFloat() / totalAmount else 0f
     Row(verticalAlignment = Alignment.CenterVertically) {
         CategoryAvatar(category, size = 36.dp)

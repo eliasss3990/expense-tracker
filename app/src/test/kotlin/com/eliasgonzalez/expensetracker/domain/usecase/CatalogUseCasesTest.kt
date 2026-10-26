@@ -341,4 +341,26 @@ class CatalogUseCasesTest {
         assertEquals(Category.FUEL.id, expenses.expenses.value.single().categoryId)
         assertEquals(Category.FUEL.id, candidates.findById(candidatoId)!!.categorySuggestion)
     }
+
+    // --- snapshot (lo usa el overlay, que no puede suscribirse a un Flow) ----
+
+    @Test
+    fun `snapshot devuelve lo mismo que el flujo - por tipo, ordenado y filtrando las inactivas`() = runTest {
+        setActive(kind, Category.HEALTH.id, false)
+        catalog.save(CatalogEntry("payment_method", "m1", "Efectivo", "#112233"))
+
+        val soloActivas = observe.snapshot(kind)
+        val todas = observe.snapshot(kind, onlyActive = false)
+
+        assertEquals(observe(kind).first(), soloActivas)
+        assertTrue(soloActivas.none { it.id == Category.HEALTH.id })
+        assertTrue(todas.any { it.id == Category.HEALTH.id })
+        assertTrue(todas.none { it.kind != kind })
+        assertEquals(todas.sortedBy { it.sortOrder }, todas)
+    }
+
+    @Test
+    fun `snapshot de un catalogo todavia sin cargar viene vacio (el llamador decide el respaldo)`() = runTest {
+        assertTrue(ObserveCatalog(FakeCatalogRepository()).snapshot(kind).isEmpty())
+    }
 }

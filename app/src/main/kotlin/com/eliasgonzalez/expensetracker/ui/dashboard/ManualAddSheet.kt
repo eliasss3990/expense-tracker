@@ -31,7 +31,7 @@ import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.ui.common.RequiredFieldLabel
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
-import com.eliasgonzalez.expensetracker.ui.theme.brandColor
+import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
 
 /**
@@ -47,7 +47,8 @@ internal fun ManualAddSheet(onDismiss: () -> Unit) {
     var amountText by remember { mutableStateOf("") }
     var merchantText by remember { mutableStateOf("") }
     var descriptionText by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(Category.OTHER) }
+    var categoryId by remember { mutableStateOf(Category.OTHER.id) }
+    val categoryOptions = rememberCategoryOptions()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
@@ -85,12 +86,12 @@ internal fun ManualAddSheet(onDismiss: () -> Unit) {
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Category.entries.forEach { option ->
-                    val selected = option == category
+                categoryOptions.forEach { option ->
+                    val selected = option.id == categoryId
                     FilterChip(
                         selected = selected,
-                        onClick = { category = option },
-                        label = { Text(option.label) },
+                        onClick = { categoryId = option.id },
+                        label = { Text(option.chipLabel()) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
                             selectedLabelColor = option.brandColor(),
@@ -108,7 +109,7 @@ internal fun ManualAddSheet(onDismiss: () -> Unit) {
                             Expense(
                                 amount = amount,
                                 merchant = merchantText,
-                                categoryId = category.id,
+                                categoryId = categoryId,
                                 description = descriptionText.trim(),
                                 occurredAt = now,
                                 createdAt = now,
