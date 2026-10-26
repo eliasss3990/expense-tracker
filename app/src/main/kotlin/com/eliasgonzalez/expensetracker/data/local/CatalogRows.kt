@@ -4,9 +4,12 @@ import android.content.ContentValues
 import android.database.Cursor
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 
-// Un solo lugar para el mapeo CatalogEntry <-> fila de catalog_entries:
-// lo usan LocalCatalogRepository y el seed de DbHelper. Agregar una
-// columna implica tocar CREATE TABLE (DbHelper) y estas dos funciones.
+// Mapeo CatalogEntry <-> fila de catalog_entries para LocalCatalogRepository.
+// OJO: el seed de la base NO pasa por aca: DbSchema (Kotlin puro, para poder
+// probarlo en la JVM) tiene su propio INSERT con la lista de columnas. Agregar
+// una columna a catalog_entries implica tocar TRES lugares: CREATE_CATALOG y el
+// INSERT del seed (DbSchema) y estas dos funciones. DbMigrationTest falla si la
+// entidad, la tabla y el seed no coinciden.
 
 internal fun CatalogEntry.toContentValues() = ContentValues().apply {
     put("kind", kind)
