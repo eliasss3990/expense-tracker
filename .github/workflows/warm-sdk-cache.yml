@@ -1,0 +1,51 @@
+name: Sembrar cache del SDK
+
+# Un PR solo puede LEER cachés de su propia rama o de la rama base; no
+# ve los de otros PR. ci.yml corre únicamente en pull_request, así que
+# el caché del SDK (1,28 GiB) se guardaba siempre bajo refs/pull/N/merge
+# y cada PR nuevo arrancaba con caché vacío: reinstalaba el SDK y subía
+# 1,28 GiB (~11 min) en cada uno.
+#
+# Este workflow lo guarda una vez bajo refs/heads/next, que es la base de
+# casi todos los PR, para que los PR siguientes lo restauren en vez de
+# regenerarlo. main no necesita esto: release.yml corre en cada push a
+# main con la misma clave y ya lo siembra ahí.
+#
+# La clave y los paquetes tienen que coincidir con los de ci.yml y
+# release.yml. Si se cambia uno, cambiar los tres.
+on:
+  push:
+    branches: [next]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: warm-sdk-cache-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    name: Sembrar cache del SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v4
+      - name: Cachear paquetes del Android SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-37.0-37.1-build-tools-37.0.0
+      - name: Instalar paquetes del SDK necesarios
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-37.0" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
