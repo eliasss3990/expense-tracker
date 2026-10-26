@@ -17,9 +17,10 @@ import kotlinx.coroutines.sync.withLock
  * Comparte un Mutex con EditExpense/DeleteExpense (inyectado desde
  * AppContainer) - ver el comentario en DeleteExpense.kt para el motivo.
  *
- * La categoria pasa por CategoryPolicy: una desactivada o inexistente cae
- * en "Otro". Como ConfirmCandidate y EditCandidate registran por aca,
- * esa regla cubre tambien a los candidatos.
+ * La categoria pasa por CategoryPolicy: una desactivada SE RESPETA (desactivar
+ * solo la oculta de los selectores); unicamente un id que no existe en el
+ * catalogo cae en "Otro". Como ConfirmCandidate y EditCandidate registran
+ * por aca, esa regla cubre tambien a los candidatos.
  */
 class RegisterExpense(
     private val expenses: ExpenseRepository,

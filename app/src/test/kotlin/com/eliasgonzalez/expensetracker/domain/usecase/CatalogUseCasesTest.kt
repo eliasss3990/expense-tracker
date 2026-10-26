@@ -273,8 +273,8 @@ class CatalogUseCasesTest {
     fun `las operaciones de escritura esperan a que el catalogo este hidratado`() = runTest {
         val listo = CompletableDeferred<Unit>()
         val vacio = FakeCatalogRepository()
-        val createEsperando = CreateCatalogEntry(vacio, Mutex(), { listo.await() }) { "id-1" }
-        val deleteEsperando = DeleteCatalogEntry(vacio, { _, _ -> false }, Mutex(), { listo.await() })
+        val createEsperando = CreateCatalogEntry(vacio, Mutex(), { listo.await(); true }) { "id-1" }
+        val deleteEsperando = DeleteCatalogEntry(vacio, { _, _ -> false }, Mutex(), { listo.await(); true })
 
         val alta = async { createEsperando(kind, "Mascotas", "#AA00FF") }
         val baja = async { deleteEsperando(kind, "id-1") }
@@ -291,8 +291,8 @@ class CatalogUseCasesTest {
     fun `renombrar y desactivar tambien esperan a la hidratacion`() = runTest {
         val listo = CompletableDeferred<Unit>()
         val repo = FakeCatalogRepository(CatalogDefaults.categories)
-        val renameEsperando = RenameCatalogEntry(repo, Mutex()) { listo.await() }
-        val activeEsperando = SetCatalogEntryActive(repo, Mutex()) { listo.await() }
+        val renameEsperando = RenameCatalogEntry(repo, Mutex()) { listo.await(); true }
+        val activeEsperando = SetCatalogEntryActive(repo, Mutex()) { listo.await(); true }
 
         val a = async { renameEsperando(kind, Category.FOOD.id, "Restaurantes") }
         val b = async { activeEsperando(kind, Category.FUEL.id, false) }

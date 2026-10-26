@@ -15,7 +15,7 @@ import java.util.UUID
 class CreateCatalogEntry(
     private val catalog: CatalogRepository,
     private val mutex: Mutex = Mutex(),
-    private val awaitReady: suspend () -> Unit = {},
+    private val awaitReady: suspend () -> Boolean = { true },
     private val validKinds: Set<String> = CatalogKind.all,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -23,7 +23,7 @@ class CreateCatalogEntry(
         mutex.withLock {
             // Sin esperar la hidratacion, la lista en memoria esta vacia y
             // el chequeo de duplicados pasaria de largo.
-            awaitReady()
+            if (!awaitReady()) return@withLock CatalogOutcome.Rejected(CatalogRejection.NOT_READY)
             if (kind !in validKinds) return@withLock CatalogOutcome.Rejected(CatalogRejection.INVALID_KIND)
             if (!label.isValidCatalogLabel()) return@withLock CatalogOutcome.Rejected(CatalogRejection.INVALID_LABEL)
             if (!color.isValidCatalogColor()) return@withLock CatalogOutcome.Rejected(CatalogRejection.INVALID_COLOR)
