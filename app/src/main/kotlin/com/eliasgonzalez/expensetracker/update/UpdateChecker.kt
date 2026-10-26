@@ -9,73 +9,109 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val LATEST_RELEASE_URL =
-    "https://api.github.com/repos/eliasss3990/expense-tracker/releases/latest"
+private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO_SLUG/releases/latest"
 
 data class ReleaseInfo(val versionName: String, val htmlUrl: String, val apkDownloadUrl: String?)
 
 /**
- * Chequea la última Release publicada en GitHub. La API de Releases solo
- * responde sin autenticar si el repo es público, y aun así GitHub limita las
- * consultas anónimas a 60 por hora por IP (compartida en redes con NAT, como
- * muchos datos móviles): por eso el resultado distingue POR QUÉ falló en vez
- * de devolver un null mudo.
+ * Chequea la última Release publicada en GitHub.
+ *
+ * Primero consulta la PÁGINA web (/releases/latest, que redirige a la etiqueta de la última
+ * versión) y solo si eso falla prueba la API: la API anónima de GitHub limita a 60 consultas
+ * por hora por IP, cupo que se comparte con todo el que salga por la misma IP pública y se
+ * agota solo; la página web no cuenta contra ese cupo. El resultado distingue POR QUÉ falló
+ * (ver UpdateFailure) y cada falla queda en el log con el detalle.
  */
 object UpdateChecker {
     private const val TAG = "UpdateChecker"
+    private const val TIMEOUT_MS = 5_000
 
     suspend fun fetchLatestReleaseResult(): UpdateCheckResult = withContext(Dispatchers.IO) {
-        try {
-            val connection = URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Accept", "application/vnd.github+json")
-            connection.connectTimeout = 5_000
-            connection.readTimeout = 5_000
-            try {
-                // Se lee el codigo ANTES que el cuerpo: pedir el inputStream de un 403/404
-                // lanza IOException y se perderia el codigo y el header del limite.
-                val code = connection.responseCode
-                if (code != HttpURLConnection.HTTP_OK) {
-                    val remaining = connection.getHeaderField("X-RateLimit-Remaining")
-                    val reason = classifyHttpFailure(code, remaining)
-                    AppLog.w(TAG, "GitHub respondió HTTP $code (cupo restante: ${remaining ?: "?"}) -> $reason")
-                    return@withContext UpdateCheckResult.Failed(reason, "HTTP $code")
-                }
-                val json = JSONObject(connection.inputStream.use { it.bufferedReader().readText() })
-                val assets = json.optJSONArray("assets")
-                val assetNamesToUrls = buildList {
-                    if (assets != null) {
-                        for (i in 0 until assets.length()) {
-                            val asset = assets.getJSONObject(i)
-                            add(asset.optString("name") to asset.optString("browser_download_url"))
-                        }
-                    }
-                }
-                UpdateCheckResult.Found(
-                    ReleaseInfo(
-                        versionName = json.getString("tag_name").removePrefix("v"),
-                        htmlUrl = json.getString("html_url"),
-                        apkDownloadUrl = findApkAssetUrl(assetNamesToUrls),
-                    )
-                )
-            } finally {
-                connection.disconnect()
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: JSONException) {
-            AppLog.w(TAG, "La respuesta de GitHub no se pudo interpretar", e)
-            UpdateCheckResult.Failed(UpdateFailure.BAD_RESPONSE, e.javaClass.simpleName)
-        } catch (e: Exception) {
-            val reason = classifyException(e)
-            AppLog.w(TAG, "No se pudo consultar la última versión -> $reason", e)
-            UpdateCheckResult.Failed(reason, e.javaClass.simpleName)
-        }
+        val viaWeb = guarded("la web") { fetchViaWebRedirect() }
+        if (viaWeb is UpdateCheckResult.Found) return@withContext viaWeb
+        AppLog.w(TAG, "La consulta por la web falló ($viaWeb); pruebo la API")
+        guarded("la API") { fetchViaApi() }
     }
 
     /** Versión simple: la release, o null si falló por cualquier motivo. */
     suspend fun fetchLatestRelease(): ReleaseInfo? =
         (fetchLatestReleaseResult() as? UpdateCheckResult.Found)?.release
+
+    /** Ejecuta una consulta y convierte cualquier excepción en un resultado clasificado, ya logueado. */
+    private fun guarded(source: String, query: () -> UpdateCheckResult): UpdateCheckResult = try {
+        query()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: JSONException) {
+        AppLog.w(TAG, "La respuesta de $source no se pudo interpretar", e)
+        UpdateCheckResult.Failed(UpdateFailure.BAD_RESPONSE, e.javaClass.simpleName)
+    } catch (e: Exception) {
+        val reason = classifyException(e)
+        AppLog.w(TAG, "No se pudo consultar $source -> $reason", e)
+        UpdateCheckResult.Failed(reason, e.javaClass.simpleName)
+    }
+
+    private fun open(url: String): HttpURLConnection =
+        (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = TIMEOUT_MS
+            readTimeout = TIMEOUT_MS
+        }
+
+    private fun fetchViaWebRedirect(): UpdateCheckResult {
+        val connection = open(LATEST_PAGE_URL).apply { instanceFollowRedirects = false }
+        try {
+            val code = connection.responseCode
+            if (code !in 300..399) {
+                AppLog.w(TAG, "La web respondió HTTP $code (se esperaba una redirección)")
+                return UpdateCheckResult.Failed(classifyHttpFailure(code, null), "HTTP $code")
+            }
+            val tag = tagFromReleasesLocation(connection.getHeaderField("Location"))
+            if (tag == null) {
+                AppLog.w(TAG, "La redirección de la web no trae una etiqueta de versión válida")
+                return UpdateCheckResult.Failed(UpdateFailure.BAD_RESPONSE, "sin etiqueta")
+            }
+            return UpdateCheckResult.Found(releaseInfoFromTag(tag))
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun fetchViaApi(): UpdateCheckResult {
+        val connection = open(LATEST_RELEASE_URL).apply {
+            setRequestProperty("Accept", "application/vnd.github+json")
+        }
+        try {
+            // Se lee el codigo ANTES que el cuerpo: pedir el inputStream de un 403/404
+            // lanza IOException y se perderia el codigo y el header del limite.
+            val code = connection.responseCode
+            if (code != HttpURLConnection.HTTP_OK) {
+                val remaining = connection.getHeaderField("X-RateLimit-Remaining")
+                val reason = classifyHttpFailure(code, remaining)
+                AppLog.w(TAG, "La API respondió HTTP $code (cupo restante: ${remaining ?: "?"}) -> $reason")
+                return UpdateCheckResult.Failed(reason, "HTTP $code")
+            }
+            val json = JSONObject(connection.inputStream.use { it.bufferedReader().readText() })
+            val assets = json.optJSONArray("assets")
+            val assetNamesToUrls = buildList {
+                if (assets != null) {
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        add(asset.optString("name") to asset.optString("browser_download_url"))
+                    }
+                }
+            }
+            return UpdateCheckResult.Found(
+                ReleaseInfo(
+                    versionName = json.getString("tag_name").removePrefix("v"),
+                    htmlUrl = json.getString("html_url"),
+                    apkDownloadUrl = findApkAssetUrl(assetNamesToUrls),
+                )
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
 }
 
 /**

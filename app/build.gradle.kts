@@ -23,8 +23,8 @@ android {
         applicationId = "com.eliasgonzalez.expensetracker"
         minSdk = 26
         targetSdk = 37
-        versionCode = 10
-        versionName = "0.5.3"
+        versionCode = 12
+        versionName = "0.5.5"
     }
 
     buildFeatures {
