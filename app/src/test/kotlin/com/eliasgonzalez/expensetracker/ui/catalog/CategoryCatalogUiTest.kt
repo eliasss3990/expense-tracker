@@ -39,8 +39,20 @@ class CategoryCatalogUiTest {
     }
 
     @Test
-    fun `el mensaje de IN_USE explica que solo se puede desactivar`() {
-        assertTrue(categoryRejectionMessage(CatalogRejection.IN_USE).contains("desactivar"))
+    fun `el mensaje de IN_USE explica que solo se puede desactivar y menciona a los candidatos pendientes`() {
+        val mensaje = categoryRejectionMessage(CatalogRejection.IN_USE)
+
+        assertTrue(mensaje.contains("desactivar"))
+        // El dominio tambien bloquea por candidatos pendientes: un "tiene gastos"
+        // a secas contradeciria una fila que muestra "0 gastos".
+        assertTrue(mensaje.contains("candidatos pendientes"))
+    }
+
+    @Test
+    fun `la razon de en uso distingue gastos de candidatos pendientes`() {
+        assertEquals("tiene 1 gasto", categoryInUseReason(1))
+        assertEquals("tiene 7 gastos", categoryInUseReason(7))
+        assertTrue(categoryInUseReason(0).contains("candidatos pendientes"))
     }
 
     @Test

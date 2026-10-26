@@ -121,8 +121,8 @@ class AppContainer(context: Context) {
     val observeActivity = ObserveActivity(activityRepository)
     val findPendingCandidate = FindPendingCandidate(candidateRepository)
 
-    // Catalogo gestionable (PR 1 de 4: todavia sin consumidores en la UI,
-    // el enum Category sigue siendo la fuente hasta el PR 2).
+    // Catalogo gestionable: lo consumen los selectores/listados (ui/theme/
+    // CategoryUi.kt) y la pantalla de gestion (ui/catalog/CategoriesScreen.kt).
     private val catalogUsage = ExpenseCatalogUsage(expenseRepository, candidateRepository)
     val observeCatalog = ObserveCatalog(catalogRepository)
     val createCatalogEntry = CreateCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)

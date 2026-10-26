@@ -43,10 +43,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +57,7 @@ import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 import com.eliasgonzalez.expensetracker.domain.usecase.CATALOG_LABEL_MAX_LENGTH
 import com.eliasgonzalez.expensetracker.domain.usecase.CatalogOutcome
+import com.eliasgonzalez.expensetracker.domain.usecase.CatalogRejection
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.theme.parseCatalogColor
 import com.eliasgonzalez.expensetracker.ui.theme.toCategoryUi
@@ -84,13 +85,21 @@ internal fun CategoriesScreen() {
     val container = ServiceLocator.get()
     val kind = CatalogKind.CATEGORY
 
+    // Con la foto actual como valor inicial: si el catálogo ya cargó, el primer
+    // frame no sale con la lista vacía.
     val entries by remember { container.observeCatalog(kind, onlyActive = false) }
-        .collectAsState(initial = emptyList())
+        .collectAsState(initial = container.observeCatalog.snapshot(kind, onlyActive = false))
     val expenses by container.observeExpenses().collectAsState()
     val countByCategory = remember(expenses) { expenses.groupingBy { it.categoryId }.eachCount() }
 
     var editor by remember { mutableStateOf<EditorState>(EditorState.Closed) }
     var pendingDelete by remember { mutableStateOf<CatalogEntry?>(null) }
+    // Categoría que el dominio rechazó eliminar por estar en uso (puede ser por
+    // candidatos pendientes, que la pantalla no ve en el conteo de gastos).
+    var inUseEntry by remember { mutableStateOf<CatalogEntry?>(null) }
+    // Mientras corre crear/renombrar el botón queda deshabilitado: un doble
+    // toque mostraba un error falso ("ya existe") justo después de un éxito.
+    var busy by remember { mutableStateOf(false) }
 
     fun report(outcome: CatalogOutcome) {
         if (outcome is CatalogOutcome.Rejected) {
@@ -145,12 +154,18 @@ internal fun CategoriesScreen() {
             initialLabel = "",
             showColors = true,
             confirmText = "Crear",
+            busy = busy,
             onDismiss = { editor = EditorState.Closed },
             onConfirm = { label, color ->
                 scope.launch {
-                    val outcome = container.createCatalogEntry(kind, label, color)
-                    report(outcome)
-                    if (outcome is CatalogOutcome.Success) editor = EditorState.Closed
+                    busy = true
+                    try {
+                        val outcome = container.createCatalogEntry(kind, label, color)
+                        report(outcome)
+                        if (outcome is CatalogOutcome.Success) editor = EditorState.Closed
+                    } finally {
+                        busy = false
+                    }
                 }
             },
         )
@@ -159,57 +174,100 @@ internal fun CategoriesScreen() {
             initialLabel = state.entry.label,
             showColors = false,
             confirmText = "Guardar",
+            busy = busy,
             onDismiss = { editor = EditorState.Closed },
             onConfirm = { label, _ ->
                 scope.launch {
-                    val outcome = container.renameCatalogEntry(kind, state.entry.id, label)
-                    report(outcome)
-                    if (outcome is CatalogOutcome.Success) editor = EditorState.Closed
+                    busy = true
+                    try {
+                        val outcome = container.renameCatalogEntry(kind, state.entry.id, label)
+                        report(outcome)
+                        if (outcome is CatalogOutcome.Success) editor = EditorState.Closed
+                    } finally {
+                        busy = false
+                    }
                 }
             },
         )
     }
 
-    pendingDelete?.let { entry ->
-        val count = countByCategory[entry.id] ?: 0
-        if (count > 0) {
-            // Con gastos asociados no se elimina: se ofrece desactivar en su lugar.
-            AlertDialog(
-                onDismissRequest = { pendingDelete = null },
-                title = { Text("No se puede eliminar") },
-                text = {
-                    Text(
-                        "\"${entry.label}\" tiene $count ${if (count == 1) "gasto" else "gastos"}. " +
-                            "Para dejar de usarla, desactivala: tus gastos la conservan y deja de aparecer para elegir.",
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            pendingDelete = null
-                            scope.launch { report(container.setCatalogEntryActive(kind, entry.id, false)) }
-                        },
-                    ) { Text("Desactivar") }
-                },
-                dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancelar") } },
-            )
-        } else {
-            AlertDialog(
-                onDismissRequest = { pendingDelete = null },
-                title = { Text("¿Eliminar categoría?") },
-                text = { Text("\"${entry.label}\" se va a borrar. Esta acción no se puede deshacer.") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            pendingDelete = null
-                            scope.launch { report(container.deleteCatalogEntry(kind, entry.id)) }
-                        },
-                    ) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
-                },
-                dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancelar") } },
-            )
-        }
+    // En uso: o ya se sabe por el conteo de gastos, o el dominio lo rechazó (p. ej.
+    // por candidatos pendientes).
+    val inUse = inUseEntry ?: pendingDelete?.takeIf { (countByCategory[it.id] ?: 0) > 0 }
+    inUse?.let { entry ->
+        CategoryInUseDialog(
+            entry = entry,
+            expenseCount = countByCategory[entry.id] ?: 0,
+            onDismiss = {
+                inUseEntry = null
+                pendingDelete = null
+            },
+            onDeactivate = {
+                inUseEntry = null
+                pendingDelete = null
+                scope.launch { report(container.setCatalogEntryActive(kind, entry.id, false)) }
+            },
+        )
     }
+
+    pendingDelete?.takeIf { inUse == null }?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("¿Eliminar categoría?") },
+            text = { Text("\"${entry.label}\" se va a borrar. Esta acción no se puede deshacer.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        scope.launch {
+                            val outcome = container.deleteCatalogEntry(kind, entry.id)
+                            if (outcome is CatalogOutcome.Rejected && outcome.reason == CatalogRejection.IN_USE) {
+                                inUseEntry = entry
+                            } else {
+                                report(outcome)
+                            }
+                        }
+                    },
+                ) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancelar") } },
+        )
+    }
+}
+
+@Composable
+private fun CategoryInUseDialog(
+    entry: CatalogEntry,
+    expenseCount: Int,
+    onDismiss: () -> Unit,
+    onDeactivate: () -> Unit,
+) {
+    val reason = categoryInUseReason(expenseCount)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("No se puede eliminar") },
+        text = {
+            Text(
+                if (entry.active) {
+                    "\"${entry.label}\" $reason. Para dejar de usarla, desactivala: " +
+                        "tus gastos la conservan y deja de aparecer para elegir."
+                } else {
+                    "\"${entry.label}\" $reason. Ya está desactivada: no aparece para elegir " +
+                        "y tus gastos la conservan."
+                },
+            )
+        },
+        confirmButton = {
+            if (entry.active) {
+                TextButton(onClick = onDeactivate) { Text("Desactivar") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Entendido") }
+            }
+        },
+        dismissButton = {
+            if (entry.active) TextButton(onClick = onDismiss) { Text("Cancelar") }
+        },
+    )
 }
 
 @Composable
@@ -227,24 +285,30 @@ private fun CategoryRow(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            CategoryAvatar(entry.toCategoryUi())
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    entry.label,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (entry.active) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-                Text(
-                    categoryRowSubtitle(entry.active, entry.protected, expenseCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // Las inactivas se atenúan (avatar y texto), no solo cambian el color del nombre.
+            Row(
+                Modifier.weight(1f).alpha(if (entry.active) 1f else 0.55f),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CategoryAvatar(entry.toCategoryUi())
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        entry.label,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (entry.active) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                    Text(
+                        categoryRowSubtitle(entry.active, entry.protected, expenseCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             Switch(
                 checked = entry.active,
@@ -267,11 +331,15 @@ private fun CategoryEditorDialog(
     initialLabel: String,
     showColors: Boolean,
     confirmText: String,
+    busy: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (label: String, color: String) -> Unit,
 ) {
-    var label by rememberSaveable { mutableStateOf(initialLabel) }
-    var color by rememberSaveable { mutableStateOf(CATEGORY_COLOR_CHOICES.first()) }
+    // `remember`, no `rememberSaveable`: el estado del diálogo (qué editor está
+    // abierto) no sobrevive a una rotación, así que guardar el texto haría que
+    // el próximo diálogo reciba el texto viejo de otro.
+    var label by remember { mutableStateOf(initialLabel) }
+    var color by remember { mutableStateOf(CATEGORY_COLOR_CHOICES.first()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -304,7 +372,7 @@ private fun CategoryEditorDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(label, color) }, enabled = label.isNotBlank()) { Text(confirmText) }
+            Button(onClick = { onConfirm(label, color) }, enabled = label.isNotBlank() && !busy) { Text(confirmText) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )

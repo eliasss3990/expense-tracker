@@ -13,7 +13,7 @@ fun categoryRejectionMessage(reason: CatalogRejection): String = when (reason) {
     CatalogRejection.INVALID_COLOR -> "Elegí un color de la paleta."
     CatalogRejection.NOT_FOUND -> "Esa categoría ya no existe."
     CatalogRejection.PROTECTED -> "Esta categoría no se puede desactivar ni eliminar."
-    CatalogRejection.IN_USE -> "Tiene gastos asociados: solo se puede desactivar."
+    CatalogRejection.IN_USE -> "Tiene gastos o candidatos pendientes asociados: solo se puede desactivar."
     CatalogRejection.NOT_READY -> "Todavía se están cargando los datos, probá de nuevo en un momento."
     CatalogRejection.INVALID_KIND -> "Tipo de lista inválido."
 }
@@ -25,3 +25,10 @@ fun categoryRowSubtitle(active: Boolean, protected: Boolean, expenseCount: Int):
         if (protected) add("Siempre activa")
         add(if (expenseCount == 1) "1 gasto" else "$expenseCount gastos")
     }.joinToString(" · ")
+
+/** Por qué una categoría "en uso" no se puede eliminar, para el diálogo. */
+fun categoryInUseReason(expenseCount: Int): String = when {
+    expenseCount == 1 -> "tiene 1 gasto"
+    expenseCount > 1 -> "tiene $expenseCount gastos"
+    else -> "la sugieren candidatos pendientes de la Bandeja"
+}
