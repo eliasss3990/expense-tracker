@@ -55,7 +55,6 @@ import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.EXPENSES_PAGE_SIZE
 import com.eliasgonzalez.expensetracker.ui.common.EmptyState
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
-import com.eliasgonzalez.expensetracker.ui.theme.CategoryUi
 import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryLookup
 import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
@@ -115,9 +114,9 @@ private fun PendingCard(candidate: ExpenseCandidate) {
                 InlineEditForm(
                     candidate = candidate,
                     onCancel = { isEditing = false },
-                    onSave = { amount, merchant, category ->
+                    onSave = { amount, merchant, newCategoryId ->
                         scope.launch {
-                            ServiceLocator.get().editCandidate(candidate.id, amount, merchant, category.id)
+                            ServiceLocator.get().editCandidate(candidate.id, amount, merchant, newCategoryId)
                         }
                     },
                 )
@@ -207,15 +206,13 @@ private fun PendingCardSummary(
 private fun InlineEditForm(
     candidate: ExpenseCandidate,
     onCancel: () -> Unit,
-    onSave: (amount: Long, merchant: String, category: CategoryUi) -> Unit,
+    onSave: (amount: Long, merchant: String, categoryId: String) -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf(candidate.amount.toString()) }
     var merchantText by rememberSaveable { mutableStateOf(candidate.merchant) }
     var categoryId by rememberSaveable { mutableStateOf(candidate.categorySuggestion) }
-    val categoryLookup = rememberCategoryLookup()
     // Activas + la sugerida por el parser aunque este desactivada.
     val categoryOptions = rememberCategoryOptions(alsoInclude = setOf(candidate.categorySuggestion, categoryId))
-    val category = categoryLookup(categoryId)
 
     Text("Editar gasto", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     OutlinedTextField(
@@ -259,7 +256,8 @@ private fun InlineEditForm(
             onClick = {
                 val amount = amountText.toLongOrNull() ?: 0
                 if (amount <= 0 || merchantText.isBlank()) return@Button
-                onSave(amount, merchantText, category)
+                // Id crudo, no el resuelto (ver ExpenseRow).
+                onSave(amount, merchantText, categoryId)
             },
             modifier = Modifier.weight(1f),
         ) { Text("Guardar") }

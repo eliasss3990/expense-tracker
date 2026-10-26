@@ -235,9 +235,22 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val json = ServiceLocator.get().exportBackup()
-        context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-        Toast.makeText(context, "Backup exportado", Toast.LENGTH_SHORT).show()
+        scope.launch {
+            // Un backup es la unica via de recuperacion: si algun repositorio no
+            // cargo, las listas estan vacias y exportaria un JSON valido pero
+            // incompleto, sin avisar. Mejor negarse.
+            if (!ServiceLocator.get().awaitDataLoaded()) {
+                Toast.makeText(
+                    context,
+                    "Los datos no terminaron de cargar: no se exportó el backup para no guardar uno incompleto",
+                    Toast.LENGTH_LONG,
+                ).show()
+                return@launch
+            }
+            val json = ServiceLocator.get().exportBackup()
+            context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+            Toast.makeText(context, "Backup exportado", Toast.LENGTH_SHORT).show()
+        }
     }
 
     var showAddSheet by remember { mutableStateOf(false) }

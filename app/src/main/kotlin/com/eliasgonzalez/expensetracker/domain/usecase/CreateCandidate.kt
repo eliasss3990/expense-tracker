@@ -43,8 +43,13 @@ class CreateCandidate(
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
     private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
+    private val awaitReady: suspend () -> Boolean = { true },
 ) {
     suspend operator fun invoke(original: ExpenseCandidate): Long? = mutex.withLock {
+        // Esperar la carga antes de buscar duplicados (con la lista vacia ninguno se
+        // detectaria). Si la carga fallo se sigue igual: un duplicado es mejor que
+        // perder un gasto detectado.
+        awaitReady()
         if (findDuplicate(original) != null) return@withLock null
 
         // Un parser puede sugerir una categoria que el usuario ya elimino:

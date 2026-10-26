@@ -50,7 +50,6 @@ import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.RequiredFieldLabel
 import com.eliasgonzalez.expensetracker.ui.common.relativeDay
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
-import com.eliasgonzalez.expensetracker.ui.theme.CategoryUi
 import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryLookup
 import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
@@ -120,9 +119,9 @@ internal fun ExpenseRow(
                 ExpenseInlineEditForm(
                     expense = expense,
                     onCancel = { isEditing = false },
-                    onSave = { amount, merchant, category, description ->
+                    onSave = { amount, merchant, newCategoryId, description ->
                         scope.launch {
-                            ServiceLocator.get().editExpense(expense.id, amount, merchant, category.id, description)
+                            ServiceLocator.get().editExpense(expense.id, amount, merchant, newCategoryId, description)
                         }
                         isEditing = false
                     },
@@ -176,16 +175,14 @@ internal fun ExpenseRow(
 private fun ExpenseInlineEditForm(
     expense: Expense,
     onCancel: () -> Unit,
-    onSave: (amount: Long, merchant: String, category: CategoryUi, description: String) -> Unit,
+    onSave: (amount: Long, merchant: String, categoryId: String, description: String) -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf(expense.amount.toString()) }
     var merchantText by rememberSaveable { mutableStateOf(expense.merchant) }
     var descriptionText by rememberSaveable { mutableStateOf(expense.description) }
     var categoryId by rememberSaveable { mutableStateOf(expense.categoryId) }
-    val categoryLookup = rememberCategoryLookup()
     // Activas + la categoria actual del gasto aunque este desactivada.
     val categoryOptions = rememberCategoryOptions(alsoInclude = setOf(expense.categoryId, categoryId))
-    val category = categoryLookup(categoryId)
 
     Text("Editar gasto", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     OutlinedTextField(
@@ -237,7 +234,9 @@ private fun ExpenseInlineEditForm(
             onClick = {
                 val amount = amountText.toLongOrNull() ?: 0
                 if (amount <= 0 || merchantText.isBlank()) return@Button
-                onSave(amount, merchantText, category, descriptionText.trim())
+                // Id CRUDO, no el resuelto: con el catalogo sin cargar el lookup cae en "Otro" y
+                // guardar ese id movia el gasto de categoria al corregir solo el monto.
+                onSave(amount, merchantText, categoryId, descriptionText.trim())
             },
             modifier = Modifier.weight(1f),
         ) { Text("Guardar") }

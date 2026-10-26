@@ -27,6 +27,7 @@ class EditCandidate(
     private val mutex: Mutex = Mutex(),
     private val notifier: CandidateNotifier = CandidateNotifier.None,
     private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
+    private val awaitReady: suspend () -> Boolean = { true },
 ) {
     suspend operator fun invoke(
         candidateId: Long,
@@ -35,6 +36,8 @@ class EditCandidate(
         categoryId: String = "",
         description: String = "",
     ): Long? = mutex.withLock {
+        // Ver el comentario equivalente en ConfirmCandidate.
+        if (!awaitReady()) return@withLock null
         val candidate = candidates.findById(candidateId)
         if (candidate == null || candidate.status != CandidateStatus.PENDING) {
             // Ya resuelto (o inexistente): igual se retira la notificacion, por si

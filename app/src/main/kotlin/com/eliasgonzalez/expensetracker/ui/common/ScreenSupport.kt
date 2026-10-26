@@ -32,6 +32,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.eliasgonzalez.expensetracker.ui.catalog.categoryInitial
 import com.eliasgonzalez.expensetracker.ui.theme.CategoryUi
 import java.time.Instant
 import java.time.LocalDate
@@ -79,7 +80,7 @@ internal fun CategoryAvatar(category: CategoryUi, size: Dp = 44.dp) {
         } else {
             // Categoria creada por el usuario: sin ícono propio, va la inicial.
             Text(
-                category.label.take(1).uppercase(),
+                categoryInitial(category.label),
                 color = category.brandColor(),
                 fontWeight = FontWeight.Bold,
                 fontSize = (size.value * 0.4f).sp,

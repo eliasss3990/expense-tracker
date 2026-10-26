@@ -55,13 +55,14 @@ fun CatalogEntry.toCategoryUi(): CategoryUi = CategoryUi(
 
 @Composable
 private fun rememberCatalogEntries(): List<CatalogEntry> {
-    val flow = remember {
-        ServiceLocator.get().observeCatalog(CatalogKind.CATEGORY, onlyActive = false)
-    }
-    // Hasta la primera emision (catalogo aun cargando) se usan las de fabrica,
-    // asi la primera pantalla no sale con la lista vacia.
-    val entries by flow.collectAsState(initial = CatalogDefaults.categories)
-    return entries
+    val container = ServiceLocator.get()
+    val flow = remember { container.observeCatalog(CatalogKind.CATEGORY, onlyActive = false) }
+    // La foto actual como valor inicial: con el catalogo ya cargado el primer frame
+    // sale con las categorias reales (no con las de fabrica).
+    val entries by flow.collectAsState(initial = container.observeCatalog.snapshot(CatalogKind.CATEGORY, onlyActive = false))
+    // El catalogo nunca esta vacio de verdad ("Otro" no se puede borrar): una lista
+    // vacia significa "todavia no cargo", y entonces se usan las de fabrica.
+    return entries.ifEmpty { CatalogDefaults.categories }
 }
 
 /**

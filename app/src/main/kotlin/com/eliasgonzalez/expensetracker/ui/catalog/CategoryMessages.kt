@@ -32,3 +32,14 @@ fun categoryInUseReason(expenseCount: Int): String = when {
     expenseCount > 1 -> "tiene $expenseCount gastos"
     else -> "la sugieren candidatos pendientes de la Bandeja"
 }
+
+/**
+ * Inicial para el avatar de una categoria sin ícono. Toma el primer code point,
+ * no el primer `Char`: con `take(1)` un nombre que empieza con emoji
+ * (par sustituto de UTF-16) quedaba partido por la mitad y se dibujaba roto.
+ */
+fun categoryInitial(label: String): String {
+    val trimmed = label.trim()
+    if (trimmed.isEmpty()) return "?"
+    return String(Character.toChars(trimmed.codePointAt(0))).uppercase()
+}

@@ -93,6 +93,10 @@ class AppContainer(context: Context) {
     // catalogo se niegan a operar (NOT_READY) si no, porque con listas
     // vacias "en uso" daria false para datos reales.
     private val awaitHydrated: suspend () -> Boolean = { hydration.await() }
+
+    /** Espera a que los repositorios terminen de cargar; false si alguno fallo. */
+    suspend fun awaitDataLoaded(): Boolean = hydration.await()
+
     private val categoryPolicy: CategoryPolicy = CatalogCategoryPolicy(catalogRepository) { awaitHydrated() }
 
     // Un solo Mutex por dominio (candidatos, gastos), compartido entre
@@ -109,10 +113,10 @@ class AppContainer(context: Context) {
     private val candidateNotifier: CandidateNotifier = AndroidCandidateNotifier(context.applicationContext)
 
     val registerExpense = RegisterExpense(expenseRepository, activityRepository, expenseWriteMutex, categoryPolicy)
-    val createCandidate = CreateCandidate(candidateRepository, activityRepository, candidateWriteMutex, categoryPolicy)
-    val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier)
-    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier, categoryPolicy)
-    val rejectCandidate = RejectCandidate(candidateRepository, activityRepository, candidateWriteMutex, candidateNotifier)
+    val createCandidate = CreateCandidate(candidateRepository, activityRepository, candidateWriteMutex, categoryPolicy, awaitHydrated)
+    val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier, awaitHydrated)
+    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier, categoryPolicy, awaitHydrated)
+    val rejectCandidate = RejectCandidate(candidateRepository, activityRepository, candidateWriteMutex, candidateNotifier, awaitHydrated)
     val editExpense = EditExpense(expenseRepository, activityRepository, expenseWriteMutex, categoryPolicy)
     val deleteExpense = DeleteExpense(expenseRepository, activityRepository, expenseWriteMutex)
     val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository, catalogRepository)

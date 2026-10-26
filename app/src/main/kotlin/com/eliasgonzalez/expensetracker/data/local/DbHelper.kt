@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
+import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 
 /**
  * Persistencia via SQLite directo, no Room.
@@ -69,19 +70,19 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
             """.trimIndent()
         )
         createCatalogTable(db)
-        seedCatalog(db)
+        // Instalacion nueva: lo vigente. (La migracion v3 usa su propia lista congelada.)
+        seedCatalog(db, CatalogDefaults.categories)
     }
 
     // `IF NOT EXISTS` + CONFLICT_IGNORE: corre en una instalacion nueva y en
     // la migracion v2->v3, y es segura de repetir: NUNCA reemplaza ni
     // borra entradas existentes (renombres, desactivadas, propias).
     //
-    // OJO: llamarla SOLO desde onCreate y el bloque `oldVersion < 3`. Si
-    // una migracion futura la reusara, volveria a sembrar una entrada de
-    // fabrica que el usuario ya hubiera eliminado, y como lee el
-    // CatalogDefaults ACTUAL el resultado dependeria de la version de la
-    // app que hace el upgrade. Una migracion futura que necesite sembrar
-    // algo nuevo debe llevar su propia lista congelada.
+    // Recibe la lista a sembrar: onCreate pasa el CatalogDefaults vigente y la
+    // migracion v3 pasa CatalogSeedV3 (congelada). Una migracion futura debe
+    // llevar SU PROPIA lista congelada, nunca CatalogDefaults: como ese objeto
+    // cambia con el codigo, el resultado del upgrade dependeria de la version de
+    // la app, y volveria a sembrar una de fabrica que el usuario ya elimino.
     private fun createCatalogTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -100,8 +101,8 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
         )
     }
 
-    private fun seedCatalog(db: SQLiteDatabase) {
-        CatalogDefaults.categories.forEach { entry ->
+    private fun seedCatalog(db: SQLiteDatabase, entries: List<CatalogEntry>) {
+        entries.forEach { entry ->
             db.insertWithOnConflict(
                 "catalog_entries", null, entry.toContentValues(), SQLiteDatabase.CONFLICT_IGNORE,
             )
@@ -124,16 +125,22 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
         }
         if (oldVersion < 3) {
             createCatalogTable(db)
-            seedCatalog(db)
+            seedCatalog(db, CatalogSeedV3.categories)
         }
     }
+
+    // Instalar sobre una base MAS NUEVA (ej. probar un hotfix o una rama con
+    // DB_VERSION menor sobre datos ya en v3) lanzaria SQLiteException en cada
+    // arranque y solo dejaria borrar los datos. Como las migraciones son SOLO aditivas, la version vieja ignora
+    // las tablas/columnas que no conoce, asi que tolerar el downgrade es seguro.
+    override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
 
     companion object {
         private const val DB_NAME = "expense_tracker.db"
         // v2: agrega `description` a `candidates` (paridad con `expenses`,
         // que ya la tenia) -- ver onUpgrade, es un ALTER TABLE real.
         // v3: agrega `catalog_entries` (catalogo gestionable, ver
-        // plan-catalogo-gestionable.md) y la siembra desde CatalogDefaults.
+        // plan-catalogo-gestionable.md) y la siembra desde CatalogSeedV3 (lista congelada).
         // Migracion solo aditiva: no toca expenses/candidates/activity_log.
         private const val DB_VERSION = 3
     }

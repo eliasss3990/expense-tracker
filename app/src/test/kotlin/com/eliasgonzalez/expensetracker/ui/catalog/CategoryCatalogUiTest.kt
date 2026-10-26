@@ -67,4 +67,24 @@ class CategoryCatalogUiTest {
         assertEquals("Inactiva · 3 gastos", categoryRowSubtitle(active = false, protected = false, expenseCount = 3))
         assertEquals("Siempre activa · 2 gastos", categoryRowSubtitle(active = true, protected = true, expenseCount = 2))
     }
+
+    @Test
+    fun `la inicial es la primera letra en mayuscula, ignorando espacios`() {
+        assertEquals("M", categoryInitial("mascotas"))
+        assertEquals("R", categoryInitial("  regalos"))
+        assertEquals("Ñ", categoryInitial("ñandú"))
+    }
+
+    @Test
+    fun `la inicial de un nombre que empieza con emoji no parte el caracter por la mitad`() {
+        val inicial = categoryInitial("\uD83D\uDC36 Mascotas") // 🐶 es un par sustituto de UTF-16
+
+        assertEquals("\uD83D\uDC36", inicial)
+        assertEquals(2, inicial.length) // un code point = dos Char, enteros
+    }
+
+    @Test
+    fun `la inicial de un nombre vacio no rompe`() {
+        assertEquals("?", categoryInitial("   "))
+    }
 }

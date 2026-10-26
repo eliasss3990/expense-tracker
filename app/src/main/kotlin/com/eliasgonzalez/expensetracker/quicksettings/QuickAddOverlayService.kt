@@ -124,6 +124,7 @@ class QuickAddOverlayService : Service() {
     private lateinit var merchantInput: EditText
     private lateinit var descriptionInput: EditText
     private var selectedCategoryId: String = Category.OTHER.id
+    private var categoriesFromFallback = false
     private val palette: OverlayPalette
         get() {
             val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
@@ -156,6 +157,17 @@ class QuickAddOverlayService : Service() {
             y = topOffsetPx
         }
         windowManager.addView(rootView, layoutParams)
+
+        // Si el catalogo todavia no habia cargado (primer toque del tile justo despues
+        // de arrancar el proceso) la tarjeta se armo con las categorias de fabrica: se
+        // reconstruye apenas termina de cargar para mostrar las reales (renombres,
+        // propias y sin las desactivadas).
+        if (categoriesFromFallback) {
+            scope.launch {
+                ServiceLocator.get().awaitDataLoaded()
+                rebuildCard()
+            }
+        }
     }
 
     // El Service no se recrea con un cambio de tema (a diferencia de una
@@ -164,6 +176,11 @@ class QuickAddOverlayService : Service() {
     // (o viceversa) mientras sigue flotando en pantalla.
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        rebuildCard()
+    }
+
+    /** Reconstruye la tarjeta conservando lo escrito y el foco (tema nuevo o catalogo recien cargado). */
+    private fun rebuildCard() {
         if (!::rootView.isInitialized) return
 
         val previousAmount = amountInput.text.toString()
@@ -355,8 +372,9 @@ class QuickAddOverlayService : Service() {
         val categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         // Solo las activas. Si el catálogo todavía no cargó (primer toque del
         // tile justo después de arrancar el proceso) se usan las de fábrica.
-        val categories = ServiceLocator.get().observeCatalog.snapshot(CatalogKind.CATEGORY)
-            .ifEmpty { CatalogDefaults.categories.filter { it.active } }
+        val snapshot = ServiceLocator.get().observeCatalog.snapshot(CatalogKind.CATEGORY)
+        categoriesFromFallback = snapshot.isEmpty()
+        val categories = snapshot.ifEmpty { CatalogDefaults.categories.filter { it.active } }
         val categoryChips = mutableMapOf<String, TextView>()
         categories.forEach { category ->
             val chip = TextView(this).apply {

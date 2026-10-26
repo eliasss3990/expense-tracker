@@ -24,5 +24,7 @@ class ObserveCatalog(private val catalog: CatalogRepository) {
 
     private fun select(all: List<CatalogEntry>, kind: String, onlyActive: Boolean) =
         all.filter { it.kind == kind && (!onlyActive || it.active) }
-            .sortedBy { it.sortOrder }
+            // La protegida ("Otro", el comodin) siempre al final: una categoria
+            // nueva tiene sortOrder mayor, pero no debe quedar despues de ella.
+            .sortedWith(compareBy<CatalogEntry>({ it.protected }, { it.sortOrder }))
 }

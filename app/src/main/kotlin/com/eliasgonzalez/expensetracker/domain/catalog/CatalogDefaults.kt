@@ -5,15 +5,17 @@ import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 import com.eliasgonzalez.expensetracker.domain.model.Category
 
 /**
- * Entradas de fabrica que se siembran en la DB (instalacion nueva y
- * migracion desde una version sin catalogo). Se derivan del enum
- * `Category`, que sigue siendo la fuente de verdad hasta que la UI migre
- * al catalogo; un test fija que no se desincronicen.
+ * Entradas de fabrica de las categorias: se siembran en una instalacion nueva
+ * (DbHelper.onCreate). Se derivan del enum `Category`, que hoy aporta solo los
+ * ids y los íconos de fabrica; la UI ya lee del catalogo, no del enum.
  *
- * Los colores replican `CategoryPalette` (ui/theme/Color.kt) para que
- * al migrar la UI al catalogo nada cambie visualmente. "Otro" es
- * protegida: es el comodin cuando un parser sugiere una categoria que
- * el usuario desactivo.
+ * "Otro" es protegida (no se desactiva ni elimina) y es el comodin al que cae un
+ * gasto cuyo id ya no existe en el catalogo. Una categoria DESACTIVADA no cae
+ * ahi: se respeta tal cual (ver CategoryPolicy).
+ *
+ * La migracion v2->v3 NO usa este objeto sino una copia congelada
+ * (data/local/CatalogSeedV3): este cambia con el codigo y una migracion
+ * publicada tiene que dar siempre el mismo resultado.
  */
 object CatalogDefaults {
 

@@ -29,11 +29,14 @@ class DeleteCatalogEntry(
     private val awaitReady: suspend () -> Boolean = { true },
     private val alsoLock: List<Mutex> = emptyList(),
 ) {
-    suspend operator fun invoke(kind: String, id: String): CatalogOutcome =
-        mutex.withLock { withAll(alsoLock) { decide(kind, id) } }
+    suspend operator fun invoke(kind: String, id: String): CatalogOutcome {
+        // Se espera ANTES de tomar los mutex: si la carga tarda, no deja bloqueadas
+        // las altas de gastos y candidatos (ni la ruta de notificaciones) mientras tanto.
+        if (!awaitReady()) return CatalogOutcome.Rejected(CatalogRejection.NOT_READY)
+        return mutex.withLock { withAll(alsoLock) { decide(kind, id) } }
+    }
 
     private suspend fun decide(kind: String, id: String): CatalogOutcome {
-        if (!awaitReady()) return CatalogOutcome.Rejected(CatalogRejection.NOT_READY)
         val entry = catalog.find(kind, id)
             ?: return CatalogOutcome.Rejected(CatalogRejection.NOT_FOUND)
         if (entry.protected) return CatalogOutcome.Rejected(CatalogRejection.PROTECTED)

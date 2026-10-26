@@ -363,4 +363,38 @@ class CatalogUseCasesTest {
     fun `snapshot de un catalogo todavia sin cargar viene vacio (el llamador decide el respaldo)`() = runTest {
         assertTrue(ObserveCatalog(FakeCatalogRepository()).snapshot(kind).isEmpty())
     }
+
+    // --- antirregresion de la revision de la integracion ---------------------
+
+    @Test
+    fun `una categoria nueva queda ANTES de Otro, que siempre es la ultima`() = runTest {
+        created(create(kind, "Mascotas", "#AA00FF"))
+        created(create(kind, "Regalos", "#AA00FF"))
+
+        val labels = observe(kind).first().map { it.label }
+
+        assertEquals("Otro", labels.last())
+        assertTrue(labels.indexOf("Mascotas") < labels.indexOf("Otro"))
+        assertTrue(labels.indexOf("Regalos") < labels.indexOf("Otro"))
+    }
+
+    @Test
+    fun `eliminar espera la carga ANTES de tomar los mutex de gastos y candidatos`() = runTest {
+        val gate = CompletableDeferred<Boolean>()
+        val expenseMutex = Mutex()
+        val candidateMutex = Mutex()
+        val deleteEsperando = DeleteCatalogEntry(
+            catalog, ExpenseCatalogUsage(expenses, candidates), Mutex(), { gate.await() },
+            alsoLock = listOf(candidateMutex, expenseMutex),
+        )
+
+        val resultado = async { deleteEsperando(kind, Category.EDUCATION.id) }
+        runCurrent()
+
+        // Mientras espera la carga no debe tener bloqueadas las altas de gastos/candidatos.
+        assertTrue(!candidateMutex.isLocked && !expenseMutex.isLocked)
+
+        gate.complete(true)
+        assertTrue(resultado.await() is CatalogOutcome.Success)
+    }
 }
