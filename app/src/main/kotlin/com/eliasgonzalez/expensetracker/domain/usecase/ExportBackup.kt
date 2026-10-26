@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
+import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
@@ -9,7 +10,9 @@ import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CatalogRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 
-// v2: agrega la lista `catalog` (categorías propias, renombres y desactivadas).
+// v2: agrega la lista `catalog` (categorías propias, renombres y desactivadas) y
+// `unknownCategoryIds` (ids referenciados que el catálogo ya no describe). Los campos
+// nuevos son aditivos: un lector de v2 que ignore los que no conoce sigue funcionando.
 private const val BACKUP_FORMAT_VERSION = 2
 
 /**
@@ -40,9 +43,25 @@ class ExportBackup(
         sb.append("\n  ],\n")
         sb.append("  \"catalog\": [\n")
         sb.append(catalog.entries.value.joinToString(",\n") { it.toJson("    ") })
-        sb.append("\n  ]\n")
+        sb.append("\n  ],\n")
+        // Ids de categoria que los gastos o candidatos referencian pero que el catalogo ya
+        // no describe (categoria eliminada). Un importador futuro sabe asi que ese id existio
+        // y no tiene nombre ni color, en vez de encontrarse una referencia colgada sin aviso.
+        sb.append("  \"unknownCategoryIds\": [")
+        sb.append(unknownCategoryIds().joinToString(", ") { it.q() })
+        sb.append("]\n")
         sb.append("}\n")
         return sb.toString()
+    }
+
+    private fun unknownCategoryIds(): List<String> {
+        val described = catalog.entries.value
+            .filter { it.kind == CatalogKind.CATEGORY }
+            .map { it.id }
+            .toSet()
+        val referenced = expenses.expenses.value.map { it.categoryId } +
+            candidates.candidates.value.map { it.categorySuggestion }
+        return referenced.filter { it !in described }.distinct().sorted()
     }
 
     private fun Expense.toJson(indent: String) = """
