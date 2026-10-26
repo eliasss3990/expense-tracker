@@ -74,4 +74,6 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    // SQLite real en la JVM para probar las migraciones de la base sin emulador (DbMigrationTest).
+    testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
 }
