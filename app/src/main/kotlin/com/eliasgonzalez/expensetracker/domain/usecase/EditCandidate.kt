@@ -4,6 +4,7 @@ import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.Expense
+import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import kotlinx.coroutines.sync.Mutex
@@ -23,6 +24,7 @@ class EditCandidate(
     private val registerExpense: RegisterExpense,
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
+    private val notifier: CandidateNotifier = CandidateNotifier.None,
 ) {
     suspend operator fun invoke(
         candidateId: Long,
@@ -31,8 +33,13 @@ class EditCandidate(
         categoryId: String = "",
         description: String = "",
     ): Long? = mutex.withLock {
-        val candidate = candidates.findById(candidateId) ?: return@withLock null
-        if (candidate.status != CandidateStatus.PENDING) return@withLock null
+        val candidate = candidates.findById(candidateId)
+        if (candidate == null || candidate.status != CandidateStatus.PENDING) {
+            // Ya resuelto (o inexistente): igual se retira la notificacion, por si
+            // quedo una huerfana de una version anterior o de una carrera.
+            notifier.dismiss(candidateId)
+            return@withLock null
+        }
 
         val now = System.currentTimeMillis()
         val finalCategoryId = categoryId.ifBlank { candidate.categorySuggestion }
@@ -67,6 +74,7 @@ class EditCandidate(
                 summary = "$merchant — ₲${"%,d".format(amount)}",
             )
         )
+        notifier.dismiss(candidateId)
         return expenseId
     }
 }

@@ -8,6 +8,7 @@ import com.eliasgonzalez.expensetracker.data.local.LocalCandidateRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalCatalogRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalExpenseRepository
 import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
+import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CatalogRepository
@@ -29,9 +30,10 @@ import com.eliasgonzalez.expensetracker.domain.usecase.RegisterExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.RejectCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.RenameCatalogEntry
 import com.eliasgonzalez.expensetracker.domain.usecase.SetCatalogEntryActive
+import com.eliasgonzalez.expensetracker.notification.AndroidCandidateNotifier
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
@@ -94,11 +96,13 @@ class AppContainer(context: Context) {
     private val expenseWriteMutex = Mutex()
     private val catalogWriteMutex = Mutex()
 
+    private val candidateNotifier: CandidateNotifier = AndroidCandidateNotifier(context.applicationContext)
+
     val registerExpense = RegisterExpense(expenseRepository, activityRepository, expenseWriteMutex)
     val createCandidate = CreateCandidate(candidateRepository, activityRepository, candidateWriteMutex)
-    val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex)
-    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex)
-    val rejectCandidate = RejectCandidate(candidateRepository, activityRepository, candidateWriteMutex)
+    val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier)
+    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier)
+    val rejectCandidate = RejectCandidate(candidateRepository, activityRepository, candidateWriteMutex, candidateNotifier)
     val editExpense = EditExpense(expenseRepository, activityRepository, expenseWriteMutex)
     val deleteExpense = DeleteExpense(expenseRepository, activityRepository, expenseWriteMutex)
     val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository)
