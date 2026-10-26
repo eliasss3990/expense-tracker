@@ -1,9 +1,12 @@
 package com.eliasgonzalez.expensetracker.ui
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,11 +38,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
 import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
+import com.eliasgonzalez.expensetracker.notification.AndroidCandidateNotifier
 import com.eliasgonzalez.expensetracker.ui.theme.ExpenseTrackerTheme
 import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
@@ -55,17 +60,60 @@ class QuickAddActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val editId = intent.getLongExtra(EXTRA_EDIT_CANDIDATE_ID, -1).takeIf { it >= 0 }
-        val editingCandidate = editId?.let { ServiceLocator.get().findPendingCandidate(it) }
 
         setContent {
             ExpenseTrackerTheme {
-                QuickAddScreen(
-                    editing = editingCandidate,
-                    onSave = { finish() },
-                    onCancel = { finish() },
-                )
+                // null = todavia decidiendo. Si viene a editar hay que ESPERAR a que cargue
+                // la base antes de buscar el candidato (ver EditTarget).
+                var target by remember {
+                    mutableStateOf<EditTarget?>(if (editId == null) EditTarget.NewExpense else null)
+                }
+                LaunchedEffect(editId) {
+                    if (editId != null) {
+                        val container = ServiceLocator.get()
+                        val loaded = container.awaitDataLoaded()
+                        target = resolveEditTarget(editId, loaded, container.findPendingCandidate(editId))
+                    }
+                }
+                when (val current = target) {
+                    null -> LoadingIndicator()
+                    EditTarget.NewExpense -> QuickAddScreen(
+                        editing = null,
+                        onSave = { finish() },
+                        onCancel = { finish() },
+                    )
+                    is EditTarget.Edit -> QuickAddScreen(
+                        editing = current.candidate,
+                        onSave = { finish() },
+                        onCancel = { finish() },
+                    )
+                    EditTarget.AlreadyResolved -> ExitWithMessage("Este gasto ya fue resuelto") {
+                        // La notificacion que se toco quedo obsoleta: se retira.
+                        editId?.let { AndroidCandidateNotifier(this@QuickAddActivity).dismiss(it) }
+                    }
+                    EditTarget.LoadFailed -> ExitWithMessage(
+                        "No se pudieron cargar los datos: probá de nuevo en un momento",
+                    )
+                }
             }
         }
+    }
+
+    @Composable
+    private fun ExitWithMessage(message: String, onShown: () -> Unit = {}) {
+        LaunchedEffect(message) {
+            AppLog.i("QuickAddActivity", "Se cierra sin editar: $message")
+            Toast.makeText(this@QuickAddActivity, message, Toast.LENGTH_LONG).show()
+            onShown()
+            finish()
+        }
+    }
+}
+
+@Composable
+private fun LoadingIndicator() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
     }
 }
 
