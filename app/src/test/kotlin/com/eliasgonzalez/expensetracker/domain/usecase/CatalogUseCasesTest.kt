@@ -8,10 +8,12 @@ import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -94,8 +96,13 @@ class CatalogUseCasesTest {
     }
 
     @Test
-    fun `el mismo nombre en otro tipo de catalogo no es duplicado`() = runTest {
-        assertTrue(create("payment_method", "Comida", "#AA00FF") is CatalogOutcome.Success)
+    fun `el mismo nombre en otro tipo de catalogo no es duplicado (el catalogo es reutilizable)`() = runTest {
+        val dosTipos = CreateCatalogEntry(catalog, mutex, validKinds = setOf(kind, "payment_method")) { "m-${++seq}" }
+
+        val outcome = dosTipos("payment_method", "Comida", "#AA00FF")
+
+        assertTrue(outcome is CatalogOutcome.Success)
+        assertEquals(1, catalog.entries.value.count { it.kind == kind && it.label == "Comida" })
     }
 
     @Test
@@ -249,5 +256,50 @@ class CatalogUseCasesTest {
 
         assertTrue(observe(kind, onlyActive = true).first().none { it.id == Category.HEALTH.id })
         assertTrue(observe(kind, onlyActive = false).first().any { it.id == Category.HEALTH.id })
+    }
+
+    // --- antirregresion de los hallazgos del code-review ----------------
+
+    @Test
+    fun `rechaza un tipo de catalogo desconocido en vez de guardar una entrada huerfana`() = runTest {
+        assertEquals(CatalogRejection.INVALID_KIND, rejected(create("categoria", "Mascotas", "#AA00FF")))
+        assertTrue(catalog.entries.value.none { it.label == "Mascotas" })
+    }
+
+    @Test
+    fun `las operaciones de escritura esperan a que el catalogo este hidratado`() = runTest {
+        val listo = CompletableDeferred<Unit>()
+        val vacio = FakeCatalogRepository()
+        val createEsperando = CreateCatalogEntry(vacio, Mutex(), { listo.await() }) { "id-1" }
+        val deleteEsperando = DeleteCatalogEntry(vacio, { _, _ -> false }, Mutex(), { listo.await() })
+
+        val alta = async { createEsperando(kind, "Mascotas", "#AA00FF") }
+        val baja = async { deleteEsperando(kind, "id-1") }
+        runCurrent()
+
+        assertTrue("no debe validar contra una lista aun sin hidratar", !alta.isCompleted && !baja.isCompleted)
+
+        listo.complete(Unit)
+        assertTrue(alta.await() is CatalogOutcome.Success)
+        assertTrue(baja.await() is CatalogOutcome.Success)
+    }
+
+    @Test
+    fun `renombrar y desactivar tambien esperan a la hidratacion`() = runTest {
+        val listo = CompletableDeferred<Unit>()
+        val repo = FakeCatalogRepository(CatalogDefaults.categories)
+        val renameEsperando = RenameCatalogEntry(repo, Mutex()) { listo.await() }
+        val activeEsperando = SetCatalogEntryActive(repo, Mutex()) { listo.await() }
+
+        val a = async { renameEsperando(kind, Category.FOOD.id, "Restaurantes") }
+        val b = async { activeEsperando(kind, Category.FUEL.id, false) }
+        runCurrent()
+
+        assertTrue(!a.isCompleted && !b.isCompleted)
+        assertEquals("Comida", repo.find(kind, Category.FOOD.id)?.label)
+
+        listo.complete(Unit)
+        a.await(); b.await()
+        assertEquals("Restaurantes", repo.find(kind, Category.FOOD.id)?.label)
     }
 }

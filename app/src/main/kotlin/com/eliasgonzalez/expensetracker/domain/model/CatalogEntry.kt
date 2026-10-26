@@ -8,6 +8,9 @@ package com.eliasgonzalez.expensetracker.domain.model
  */
 object CatalogKind {
     const val CATEGORY = "category"
+
+    /** Tipos validos: un alta con otro `kind` se rechaza (INVALID_KIND). */
+    val all: Set<String> = setOf(CATEGORY)
 }
 
 /**

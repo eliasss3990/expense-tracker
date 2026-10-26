@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 
 enum class CatalogRejection {
+    INVALID_KIND,
     INVALID_LABEL,
     DUPLICATE_LABEL,
     INVALID_COLOR,
@@ -22,7 +23,9 @@ private val HEX_COLOR = Regex("^#[0-9A-Fa-f]{6}$")
 
 internal fun String.isValidCatalogColor(): Boolean = HEX_COLOR.matches(this)
 
-internal fun String.normalizedCatalogLabel(): String = trim().replace(Regex("\\s+"), " ")
+private val WHITESPACE = Regex("\\s+")
+
+internal fun String.normalizedCatalogLabel(): String = trim().replace(WHITESPACE, " ")
 
 internal fun String.isValidCatalogLabel(): Boolean =
     isNotBlank() && normalizedCatalogLabel().length <= CATALOG_LABEL_MAX_LENGTH

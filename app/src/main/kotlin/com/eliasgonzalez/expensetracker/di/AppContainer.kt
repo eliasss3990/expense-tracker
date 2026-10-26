@@ -1,6 +1,7 @@
 package com.eliasgonzalez.expensetracker.di
 
 import android.content.Context
+import android.util.Log
 import com.eliasgonzalez.expensetracker.data.local.DbHelper
 import com.eliasgonzalez.expensetracker.data.local.LocalActivityRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalCandidateRepository
@@ -30,8 +31,9 @@ import com.eliasgonzalez.expensetracker.domain.usecase.RenameCatalogEntry
 import com.eliasgonzalez.expensetracker.domain.usecase.SetCatalogEntryActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 
 /**
@@ -58,6 +60,28 @@ class AppContainer(context: Context) {
     private val candidateRepository: CandidateRepository = localCandidateRepository
     private val activityRepository: ActivityRepository = localActivityRepository
     private val catalogRepository: CatalogRepository = localCatalogRepository
+
+    // Cada hydrate va aislado: que uno falle (fila corrupta, DB bloqueada)
+    // ya no cancela a los demas ni deja el catalogo vacio todo el proceso.
+    // Los casos de uso del catalogo esperan este Deferred antes de validar,
+    // porque antes de hidratar las listas en memoria estan vacias.
+    private val hydration = appScope.async {
+        listOf<suspend () -> Unit>(
+            { localExpenseRepository.hydrate() },
+            { localCandidateRepository.hydrate() },
+            { localActivityRepository.hydrate() },
+            { localCatalogRepository.hydrate() },
+        ).forEach { hydrate ->
+            try {
+                hydrate()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("AppContainer", "Fallo al hidratar un repositorio", e)
+            }
+        }
+    }
+    private val awaitHydrated: suspend () -> Unit = { hydration.await() }
 
     // Un solo Mutex por dominio (candidatos, gastos), compartido entre
     // TODOS los casos de uso que escriben sobre ese dominio - no uno por
@@ -87,19 +111,10 @@ class AppContainer(context: Context) {
     // el enum Category sigue siendo la fuente hasta el PR 2).
     private val catalogUsage = ExpenseCatalogUsage(expenseRepository)
     val observeCatalog = ObserveCatalog(catalogRepository)
-    val createCatalogEntry = CreateCatalogEntry(catalogRepository, catalogWriteMutex)
-    val renameCatalogEntry = RenameCatalogEntry(catalogRepository, catalogWriteMutex)
-    val setCatalogEntryActive = SetCatalogEntryActive(catalogRepository, catalogWriteMutex)
-    val deleteCatalogEntry = DeleteCatalogEntry(catalogRepository, catalogUsage, catalogWriteMutex)
-
-    init {
-        appScope.launch {
-            localExpenseRepository.hydrate()
-            localCandidateRepository.hydrate()
-            localActivityRepository.hydrate()
-            localCatalogRepository.hydrate()
-        }
-    }
+    val createCatalogEntry = CreateCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)
+    val renameCatalogEntry = RenameCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)
+    val setCatalogEntryActive = SetCatalogEntryActive(catalogRepository, catalogWriteMutex, awaitHydrated)
+    val deleteCatalogEntry = DeleteCatalogEntry(catalogRepository, catalogUsage, catalogWriteMutex, awaitHydrated)
 }
 
 object ServiceLocator {

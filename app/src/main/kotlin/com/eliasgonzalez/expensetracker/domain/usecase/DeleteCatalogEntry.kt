@@ -14,8 +14,11 @@ class DeleteCatalogEntry(
     private val catalog: CatalogRepository,
     private val usage: CatalogUsage,
     private val mutex: Mutex = Mutex(),
+    private val awaitReady: suspend () -> Unit = {},
 ) {
     suspend operator fun invoke(kind: String, id: String): CatalogOutcome = mutex.withLock {
+        // Sin hidratar, "en uso" daria false para categorias con gastos reales.
+        awaitReady()
         val entry = catalog.find(kind, id)
             ?: return@withLock CatalogOutcome.Rejected(CatalogRejection.NOT_FOUND)
         if (entry.protected) return@withLock CatalogOutcome.Rejected(CatalogRejection.PROTECTED)

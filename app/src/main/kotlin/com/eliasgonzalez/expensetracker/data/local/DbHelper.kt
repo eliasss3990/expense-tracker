@@ -72,11 +72,16 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
         seedCatalog(db)
     }
 
-    // `IF NOT EXISTS` + `INSERT OR IGNORE`: esta rutina corre tanto en una
-    // instalacion nueva como en la migracion v2->v3, y tiene que ser
-    // segura de repetir. NUNCA reemplaza ni borra entradas existentes: lo
-    // que el usuario ya configuro (renombres, desactivadas, propias) se
-    // conserva. Solo agrega las de fabrica que falten.
+    // `IF NOT EXISTS` + CONFLICT_IGNORE: corre en una instalacion nueva y en
+    // la migracion v2->v3, y es segura de repetir: NUNCA reemplaza ni
+    // borra entradas existentes (renombres, desactivadas, propias).
+    //
+    // OJO: llamarla SOLO desde onCreate y el bloque `oldVersion < 3`. Si
+    // una migracion futura la reusara, volveria a sembrar una entrada de
+    // fabrica que el usuario ya hubiera eliminado, y como lee el
+    // CatalogDefaults ACTUAL el resultado dependeria de la version de la
+    // app que hace el upgrade. Una migracion futura que necesite sembrar
+    // algo nuevo debe llevar su propia lista congelada.
     private fun createCatalogTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -97,15 +102,8 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
 
     private fun seedCatalog(db: SQLiteDatabase) {
         CatalogDefaults.categories.forEach { entry ->
-            db.execSQL(
-                "INSERT OR IGNORE INTO catalog_entries " +
-                    "(kind, id, label, color, active, sort_order, built_in, protected) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                arrayOf<Any>(
-                    entry.kind, entry.id, entry.label, entry.color,
-                    if (entry.active) 1 else 0, entry.sortOrder,
-                    if (entry.builtIn) 1 else 0, if (entry.protected) 1 else 0,
-                ),
+            db.insertWithOnConflict(
+                "catalog_entries", null, entry.toContentValues(), SQLiteDatabase.CONFLICT_IGNORE,
             )
         }
     }

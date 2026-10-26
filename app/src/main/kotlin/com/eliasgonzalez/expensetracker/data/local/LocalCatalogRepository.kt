@@ -1,7 +1,5 @@
 package com.eliasgonzalez.expensetracker.data.local
 
-import android.content.ContentValues
-import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.repository.CatalogRepository
@@ -52,26 +50,4 @@ class LocalCatalogRepository(private val dbHelper: DbHelper) : CatalogRepository
 
     override fun find(kind: String, id: String): CatalogEntry? =
         _entries.value.find { it.kind == kind && it.id == id }
-
-    private fun CatalogEntry.toContentValues() = ContentValues().apply {
-        put("kind", kind)
-        put("id", id)
-        put("label", label)
-        put("color", color)
-        put("active", if (active) 1 else 0)
-        put("sort_order", sortOrder)
-        put("built_in", if (builtIn) 1 else 0)
-        put("protected", if (protected) 1 else 0)
-    }
-
-    private fun Cursor.toCatalogEntry() = CatalogEntry(
-        kind = getString(getColumnIndexOrThrow("kind")),
-        id = getString(getColumnIndexOrThrow("id")),
-        label = getString(getColumnIndexOrThrow("label")),
-        color = getString(getColumnIndexOrThrow("color")),
-        active = getInt(getColumnIndexOrThrow("active")) == 1,
-        sortOrder = getInt(getColumnIndexOrThrow("sort_order")),
-        builtIn = getInt(getColumnIndexOrThrow("built_in")) == 1,
-        protected = getInt(getColumnIndexOrThrow("protected")) == 1,
-    )
 }
