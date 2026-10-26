@@ -65,7 +65,10 @@ confirmar un gasto sin que el usuario lo revise.
   resto del tiempo — deslizable hacia los costados para descartarlo,
   como una notificación real, con colapso animado.
 - La app chequea sola si hay una versión más nueva publicada en GitHub
-  Releases al abrir (y a demanda desde el menú del Dashboard). Si hay
+  Releases al abrir (y a demanda desde el menú del Dashboard). Consulta
+  primero la **página web** de la última release y deja la API de GitHub de
+  respaldo (la API anónima limita a 60 consultas por hora por IP compartida y
+  se agota sola; la web no cuenta contra ese cupo). Si hay
   una, un banner deslizable ofrece instalarla **directo desde la app**:
   descarga el APK con `DownloadManager` y lanza el instalador del
   sistema (`FileProvider` + `REQUEST_INSTALL_PACKAGES`), sin pasar por
@@ -161,7 +164,7 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 
 El dominio (`domain/`) no importa nada de Android ni de SQLite — solo
 conoce sus propias interfaces de repositorio. Eso es lo que permite tener
-tests unitarios puros en `src/test/` (250+ tests en 25 archivos, corren en
+tests unitarios puros en `src/test/` (unos 420 tests en 44 archivos, corren en
 JVM sin emulador ni Robolectric) para la idempotencia, la deduplicación,
 los parsers, los filtros del Dashboard y el sanitizado de inputs:
 
@@ -221,7 +224,18 @@ desde esa fuente, y puede mostrar un aviso de Play Protect por no venir
 de Play Store — es esperable para cualquier app instalada así, se
 resuelve tocando "Analizar app").
 
-Manual, paso a paso:
+Si la búsqueda de actualizaciones falla, el aviso es genérico ("No se pudo
+comprobar actualizaciones") y el motivo queda en el log (ver "Logs").
+Siempre se puede descargar el APK de la
+[última Release](https://github.com/eliasss3990/expense-tracker/releases/latest)
+(la página web no tiene límite de consultas) o instalarlo con
+`adb install -r app-release.apk`. **Instalar siempre el APK de una Release**:
+un APK de debug tiene otra firma y no actualiza sobre el instalado (obligaría a
+desinstalar y perder los datos). `adb install -r` conserva los datos y, si la
+firma no coincide, falla sin tocar nada.
+
+Manual, paso a paso (requiere el Android SDK local; en una máquina sin SDK el
+build corre solo en el CI):
 
 1. Compilar dentro de WSL:
    ```bash
@@ -248,6 +262,36 @@ Manual, paso a paso:
    otras apps" (necesario para la ventanita flotante), la tile lleva
    directo a esa pantalla de Ajustes.
 
+## Logs
+
+La app registra con `AppLog` (`domain/log/`), una fachada con niveles
+`d/i/w/e`. El destino lo define un `LogSink`: hoy `LogcatSink`
+(`logging/`), el único archivo que usa `android.util.Log`. Cambiar el destino
+(un archivo, por ejemplo) es escribir otro `LogSink` y cambiar una línea en
+`ExpenseTrackerApp`.
+
+```bash
+adb logcat -s UpdateChecker AppContainer CandidateNotifier MainActivity
+```
+
+Solo se registran fallos y eventos raros, con su causa (tipo de error, código de
+respuesta, ids). **Nunca** montos, comercios ni textos de notificaciones: son
+datos financieros del usuario. logcat es un búfer en memoria y se pierde al
+reiniciar el celular.
+
+## Cómo se publica una versión
+
+1. Rama de trabajo → PR a `next` (corre el CI: lint, tests y build del APK).
+2. PR `next` → `main` (solo valida que la rama de origen sea `next`).
+3. Al mergear a `main`, `release.yml` compila el APK **firmado** y publica la
+   Release `v<versionName>`.
+
+**Bumpear `versionName` y `versionCode` en `app/build.gradle.kts` es obligatorio**
+al llevar algo a `main`: sin bump, el release se republica sobre el tag existente
+y la app no detecta ninguna actualización. Un PR que queda desactualizado se
+pone al día con `gh pr update-branch` (sin force-push). El caché del SDK de
+Android se siembra en cada push a `next` (`warm-sdk-cache.yml`).
+
 ## Cómo correr los tests
 
 ```bash
@@ -259,6 +303,14 @@ Son tests puros de JVM (sin Robolectric ni emulador) sobre los casos de
 uso de dominio y sobre funciones puras de la UI (filtros, sanitizado de
 inputs), con fakes en memoria de los repositorios
 (`src/test/kotlin/.../domain/usecase/FakeRepositories.kt`).
+
+Las **migraciones de la base** (`data/local/DbSchema.kt`) se prueban contra una
+SQLite real en memoria (`sqlite-jdbc`, solo de test), con los esquemas
+históricos v1 y v2 como fixture y la regla de que ninguna migración puede
+ejecutar `DROP`, `DELETE`, `TRUNCATE`, `REPLACE`, `UPDATE` ni `RENAME`. **Al
+escribir un test nuevo, comprobar que corre y que falla cuando se rompe lo que
+prueba** (por ejemplo reintroduciendo el bug): un "verde" sin que el test se
+ejecute no demuestra nada.
 
 ## Cómo probar la detección
 
@@ -291,4 +343,6 @@ de Ueno Bank y Banco Familiar/Eko (el parser genérico cubre el resto de
 forma más básica, sin distinguir de qué fuente viene el comercio),
 merchant aliases/aprendizaje de usuario, presupuestos, voz, OCR, ni
 sincronización con ningún proveedor externo (Google Drive, etc.) — la app
-es 100% local. El export a JSON es la única vía de backup por ahora.
+es 100% local. El export a JSON es la única vía de backup por ahora (no hay
+importación), no hay un destino de logs a archivo, y las pantallas y
+`DbHelper`/repositorios locales no tienen tests automáticos (necesitan Android).
