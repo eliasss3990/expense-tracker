@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
+import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import kotlinx.coroutines.sync.Mutex
@@ -19,10 +20,14 @@ class RejectCandidate(
     private val candidates: CandidateRepository,
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
+    private val notifier: CandidateNotifier = CandidateNotifier.None,
 ) {
     suspend operator fun invoke(candidateId: Long): Unit = mutex.withLock {
-        val candidate = candidates.findById(candidateId) ?: return@withLock
-        if (candidate.status != CandidateStatus.PENDING) return@withLock
+        val candidate = candidates.findById(candidateId)
+        if (candidate == null || candidate.status != CandidateStatus.PENDING) {
+            notifier.dismiss(candidateId)
+            return@withLock
+        }
 
         candidates.update(candidate.copy(status = CandidateStatus.REJECTED))
         activity.record(
@@ -33,5 +38,6 @@ class RejectCandidate(
                 summary = "${candidate.merchant} — ₲${"%,d".format(candidate.amount)}",
             )
         )
+        notifier.dismiss(candidateId)
     }
 }
