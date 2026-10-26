@@ -9,7 +9,6 @@ import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Idempotente: si el candidato ya no esta PENDING, no hace nada - evita
@@ -32,45 +31,47 @@ class ConfirmCandidate(
     private val notifier: CandidateNotifier = CandidateNotifier.None,
     private val awaitReady: suspend () -> Boolean = { true },
 ) {
-    suspend operator fun invoke(candidateId: Long): Long? = mutex.withLock {
+    suspend operator fun invoke(candidateId: Long): Long? {
         // Sin esperar la carga, en un proceso recien arrancado (ej. tocar "Aceptar" en
         // una notificacion) la lista esta vacia: el candidato "no existe", se retiraria
         // la notificacion y la accion se perderia. Si la carga fallo, no se hace nada y
         // la notificacion queda para reintentar.
-        if (!awaitReady()) return@withLock null
-        val candidate = candidates.findById(candidateId)
-        if (candidate == null || candidate.status != CandidateStatus.PENDING) {
-            // Ya resuelto (o inexistente): igual se retira la notificacion, por si
-            // quedo una huerfana de una version anterior o de una carrera.
-            notifier.dismiss(candidateId)
-            return@withLock null
-        }
+        if (!awaitReady()) return null
+        return mutex.withCommitLock {
+            val candidate = candidates.findById(candidateId)
+            if (candidate == null || candidate.status != CandidateStatus.PENDING) {
+                // Ya resuelto (o inexistente): igual se retira la notificacion, por si
+                // quedo una huerfana de una version anterior o de una carrera.
+                notifier.dismiss(candidateId)
+                return@withCommitLock null
+            }
 
-        val now = System.currentTimeMillis()
-        val expenseId = registerExpense(
-            Expense(
-                amount = candidate.amount,
-                currency = candidate.currency,
-                merchant = candidate.merchant,
-                categoryId = candidate.categorySuggestion,
-                description = candidate.description,
-                occurredAt = candidate.occurredAt,
-                createdAt = now,
-                source = candidate.sourceType,
-                sourceReference = candidate.id,
+            val now = System.currentTimeMillis()
+            val expenseId = registerExpense(
+                Expense(
+                    amount = candidate.amount,
+                    currency = candidate.currency,
+                    merchant = candidate.merchant,
+                    categoryId = candidate.categorySuggestion,
+                    description = candidate.description,
+                    occurredAt = candidate.occurredAt,
+                    createdAt = now,
+                    source = candidate.sourceType,
+                    sourceReference = candidate.id,
+                )
             )
-        )
-        candidates.update(candidate.copy(status = CandidateStatus.ACCEPTED))
-        activity.record(
-            ActivityEntry(
-                type = ActivityType.CANDIDATE_ACCEPTED,
-                expenseId = expenseId,
-                candidateId = candidateId,
-                timestamp = now,
-                summary = "${candidate.merchant} — ₲${"%,d".format(candidate.amount)}",
+            candidates.update(candidate.copy(status = CandidateStatus.ACCEPTED))
+            activity.record(
+                ActivityEntry(
+                    type = ActivityType.CANDIDATE_ACCEPTED,
+                    expenseId = expenseId,
+                    candidateId = candidateId,
+                    timestamp = now,
+                    summary = "${candidate.merchant} — ₲${"%,d".format(candidate.amount)}",
+                )
             )
-        )
-        notifier.dismiss(candidateId)
-        expenseId
+            notifier.dismiss(candidateId)
+            expenseId
+        }
     }
 }

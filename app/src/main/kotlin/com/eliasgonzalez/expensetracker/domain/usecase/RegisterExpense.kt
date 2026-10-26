@@ -7,7 +7,6 @@ import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Un unico caso de uso para registro manual, Quick Tile y confirmacion de
@@ -28,7 +27,7 @@ class RegisterExpense(
     private val mutex: Mutex = Mutex(),
     private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
 ) {
-    suspend operator fun invoke(expense: Expense): Long = mutex.withLock {
+    suspend operator fun invoke(expense: Expense): Long = mutex.withCommitLock {
         val toSave = expense.copy(categoryId = categoryPolicy.forNewExpense(expense.categoryId))
         val id = expenses.save(toSave)
         activity.record(

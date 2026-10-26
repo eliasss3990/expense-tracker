@@ -8,7 +8,6 @@ import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 
 private const val DEDUP_WINDOW_MILLIS = 5 * 60 * 1000L
@@ -45,12 +44,12 @@ class CreateCandidate(
     private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
     private val awaitReady: suspend () -> Boolean = { true },
 ) {
-    suspend operator fun invoke(original: ExpenseCandidate): Long? = mutex.withLock {
+    suspend operator fun invoke(original: ExpenseCandidate): Long? = mutex.withCommitLock {
         // Esperar la carga antes de buscar duplicados (con la lista vacia ninguno se
         // detectaria). Si la carga fallo se sigue igual: un duplicado es mejor que
         // perder un gasto detectado.
         awaitReady()
-        if (findDuplicate(original) != null) return@withLock null
+        if (findDuplicate(original) != null) return@withCommitLock null
 
         // Un parser puede sugerir una categoria que el usuario ya elimino:
         // se guarda lo que realmente existe, no un id colgado.
