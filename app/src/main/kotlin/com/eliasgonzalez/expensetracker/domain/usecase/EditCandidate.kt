@@ -68,11 +68,12 @@ class EditCandidate(
                     sourceReference = candidate.id,
                 )
             )
+            // amount y merchant del candidato NO se pisan: son lo que se DETECTO, y es contra
+            // lo que CreateCandidate compara el segundo aviso de la misma compra. Lo que el
+            // usuario corrigio vive en el gasto registrado (sourceReference = candidate.id).
             candidates.update(
                 candidate.copy(
                     status = CandidateStatus.EDITED,
-                    amount = amount,
-                    merchant = merchant,
                     categorySuggestion = finalCategoryId,
                     description = description,
                 )

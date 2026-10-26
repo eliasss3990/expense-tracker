@@ -18,7 +18,12 @@ confirmar un gasto sin que el usuario lo revise.
   parser — nunca se detectan como gasto.
 - Antes de crear el candidato, se chequea si ya existe uno muy parecido
   detectado hace poco (mismo monto+moneda, comercio equivalente o sin
-  comercio confiable todavía, dentro de una ventana de 5 minutos) —
+  comercio confiable todavía) — dentro de 5 minutos contra candidatos
+  pendientes y de 1 minuto contra los ya resueltos (aceptados, editados
+  o rechazados), así el segundo aviso de la misma compra no vuelve a
+  sugerirse aunque ya hayas resuelto el primero; cada descarte deja una
+  línea de log sin montos ni comercios. Los gastos cargados a mano no se
+  comparan —
   evita duplicar cuando el banco y una billetera/mail avisan la misma
   compra casi al mismo tiempo (o cuando un mismo banco manda dos mails
   de confirmación para la misma operación, como hace Banco Familiar). El

@@ -1,5 +1,8 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
+import com.eliasgonzalez.expensetracker.domain.log.LogLevel
+import com.eliasgonzalez.expensetracker.domain.log.LogSink
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -9,12 +12,14 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private const val DEDUP_WINDOW_MILLIS = 5 * 60 * 1000L
-
 class CreateCandidateTest {
+
+    @After
+    fun restaurarLog() = AppLog.install(LogSink.None)
 
     private fun candidate(
         merchant: String,
@@ -22,6 +27,7 @@ class CreateCandidateTest {
         amount: Long = 85_000,
         merchantConfident: Boolean = true,
         currency: String = "PYG",
+        sourceApp: String? = null,
     ) = ExpenseCandidate(
         amount = amount,
         merchant = merchant,
@@ -30,6 +36,7 @@ class CreateCandidateTest {
         detectedAt = detectedAt,
         sourceType = ExpenseSource.NOTIFICATION,
         currency = currency,
+        sourceApp = sourceApp,
     )
 
     @Test
@@ -397,58 +404,169 @@ class CreateCandidateTest {
         assertEquals(1, candidates.candidates.value.size)
     }
 
-    // --- Regresion (hallazgo de auditoria, 2026-08-28): findDuplicate no
-    // filtraba por status, asi que un candidato ya resuelto (ACCEPTED/
-    // REJECTED/EDITED) - que nunca se borra, queda en la lista para
-    // siempre - seguia "bloqueando" como si fuera un duplicado a una
-    // compra genuinamente distinta y posterior con el mismo monto y
-    // comercio (ej. dos cafes identicos en el mismo lugar el mismo dia).
-    // El segundo gasto real desaparecia en silencio, sin ningun error.
-    //
-    // Verificado revirtiendo el fix (sacando el `existing.status ==
-    // CandidateStatus.PENDING &&` del find en CreateCandidate.kt) - los
-    // 3 tests de abajo fallan como se espera. Con el fix, pasan.
+    // --- Candidatos ya resueltos (ACCEPTED/EDITED/REJECTED). Dos reglas que conviven:
+    //  1. Dentro de la ventana corta (1 min) el aviso es el MISMO gasto llegando por otro canal
+    //     o en otro mail: se descarta aunque el usuario ya haya resuelto el primero.
+    //  2. Pasada esa ventana es una compra genuinamente distinta (dos cafes iguales el mismo
+    //     dia) y NO se pierde (regresion de la auditoria 2026-08-28).
 
-    @Test
-    fun `un candidato ya ACCEPTED no bloquea una compra distinta y posterior con el mismo monto y comercio`() = runTest {
+    private suspend fun resolve(candidates: FakeCandidateRepository, id: Long, status: CandidateStatus) =
+        candidates.update(candidates.findById(id)!!.copy(status = status))
+
+    private fun dedupeaTrasResolver(status: CandidateStatus) = runTest {
         val candidates = FakeCandidateRepository()
         val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
-
         val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
-        candidates.update(candidates.findById(firstId)!!.copy(status = CandidateStatus.ACCEPTED))
+        resolve(candidates, firstId, status)
 
-        val secondId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_050L))
+        val secondId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L + 2_000L))
 
-        assertNotNull("La segunda compra, genuinamente distinta, no deberia perderse", secondId)
+        assertNull("el aviso repetido no debia volver a sugerirse", secondId)
+        assertEquals(1, candidates.candidates.value.size)
+    }
+
+    private fun noBloqueaPasadaLaVentana(status: CandidateStatus) = runTest {
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+        val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
+        resolve(candidates, firstId, status)
+
+        val secondId = createCandidate(
+            candidate("Cafeteria Central", detectedAt = 1_000L + DEDUP_RESOLVED_WINDOW_MILLIS + 1)
+        )
+
+        assertNotNull("la segunda compra, genuinamente distinta, no deberia perderse", secondId)
         assertEquals(2, candidates.candidates.value.size)
     }
 
     @Test
-    fun `un candidato ya REJECTED no bloquea una compra distinta y posterior con el mismo monto y comercio`() = runTest {
+    fun `un ACCEPTED dentro de la ventana corta dedupea el segundo aviso`() = dedupeaTrasResolver(CandidateStatus.ACCEPTED)
+
+    @Test
+    fun `un REJECTED dentro de la ventana corta dedupea el segundo aviso`() = dedupeaTrasResolver(CandidateStatus.REJECTED)
+
+    @Test
+    fun `un EDITED dentro de la ventana corta dedupea el segundo aviso`() = dedupeaTrasResolver(CandidateStatus.EDITED)
+
+    @Test
+    fun `un ACCEPTED pasada la ventana corta no bloquea una compra distinta y posterior`() =
+        noBloqueaPasadaLaVentana(CandidateStatus.ACCEPTED)
+
+    @Test
+    fun `un REJECTED pasada la ventana corta no bloquea una compra distinta y posterior`() =
+        noBloqueaPasadaLaVentana(CandidateStatus.REJECTED)
+
+    @Test
+    fun `un EDITED pasada la ventana corta no bloquea una compra distinta y posterior`() =
+        noBloqueaPasadaLaVentana(CandidateStatus.EDITED)
+
+    @Test
+    fun `editar el primer aviso con otros valores no impide dedupear el segundo con los originales`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val expenses = FakeExpenseRepository()
+        val activity = FakeActivityRepository()
+        val createCandidate = CreateCandidate(candidates, activity)
+        val editCandidate = EditCandidate(candidates, RegisterExpense(expenses, activity), activity)
+
+        val firstId = createCandidate(candidate("BANCARD", detectedAt = 1_000L, amount = 85_000))!!
+        editCandidate(firstId, amount = 80_000, merchant = "Cafeteria Central")
+
+        val secondId = createCandidate(candidate("BANCARD", detectedAt = 11_000L, amount = 85_000))
+
+        assertNull("el mail con los valores originales debia reconocerse como duplicado", secondId)
+    }
+
+    @Test
+    fun `un resuelto con comercio no confiable dedupea dentro de la ventana corta aunque el nombre difiera`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+        val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
+        resolve(candidates, firstId, CandidateStatus.ACCEPTED)
+
+        assertNull(createCandidate(candidate("Transferencia", detectedAt = 2_000L, merchantConfident = false)))
+    }
+
+    @Test
+    fun `un resuelto en otra moneda no dedupea ni dentro de la ventana corta`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+        val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
+        resolve(candidates, firstId, CandidateStatus.ACCEPTED)
+
+        assertNotNull(createCandidate(candidate("Cafeteria Central", detectedAt = 2_000L, currency = "USD")))
+    }
+
+    @Test
+    fun `la ventana contra resueltos es de un minuto y su limite exacto todavia dedupea`() = runTest {
+        assertEquals(60_000L, DEDUP_RESOLVED_WINDOW_MILLIS)
         val candidates = FakeCandidateRepository()
         val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
 
         val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
         candidates.update(candidates.findById(firstId)!!.copy(status = CandidateStatus.REJECTED))
 
-        val secondId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_050L))
-
-        assertNotNull(secondId)
-        assertEquals(2, candidates.candidates.value.size)
+        assertNull(createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L + DEDUP_RESOLVED_WINDOW_MILLIS)))
     }
 
     @Test
-    fun `un candidato ya EDITED no bloquea una compra distinta y posterior con el mismo monto y comercio`() = runTest {
+    fun `un resuelto con comercio distinto y ambos confiables no dedupea ni dentro de la ventana corta`() = runTest {
         val candidates = FakeCandidateRepository()
         val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
 
         val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))!!
-        candidates.update(candidates.findById(firstId)!!.copy(status = CandidateStatus.EDITED))
+        candidates.update(candidates.findById(firstId)!!.copy(status = CandidateStatus.ACCEPTED))
 
-        val secondId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_050L))
+        assertNotNull(createCandidate(candidate("Panaderia Sur", detectedAt = 1_500L)))
+    }
 
-        assertNotNull(secondId)
-        assertEquals(2, candidates.candidates.value.size)
+    @Test
+    fun `el log distingue si el aviso repetido vino de la misma app o de otra`() = runTest {
+        val lines = mutableListOf<String>()
+        AppLog.install(object : LogSink {
+            override fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?) {
+                lines += message
+            }
+        })
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+        createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L, sourceApp = "Banco"))
+
+        createCandidate(candidate("Cafeteria Central", detectedAt = 2_000L, sourceApp = "Banco"))
+        createCandidate(candidate("Cafeteria Central", detectedAt = 3_000L, sourceApp = "Gmail"))
+
+        assertTrue(lines.toString(), "mismaApp=true" in lines[0] && "mismaApp=false" in lines[1])
+    }
+
+    @Test
+    fun `descartar un duplicado deja una sola linea de log sin montos ni comercios`() = runTest {
+        val lines = mutableListOf<String>()
+        AppLog.install(object : LogSink {
+            override fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?) {
+                lines += message
+            }
+        })
+        run {
+            val candidates = FakeCandidateRepository()
+            val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+            val firstId = createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L, amount = 123_456))!!
+            candidates.update(candidates.findById(firstId)!!.copy(status = CandidateStatus.REJECTED))
+
+            createCandidate(candidate("Cafeteria Central", detectedAt = 3_000L, amount = 123_456))
+
+            assertEquals(1, lines.size)
+            assertTrue(lines.single(), "REJECTED" in lines.single() && "deltaMs=2000" in lines.single())
+            assertTrue("el log no debe llevar datos financieros", "123" !in lines.single() && "Cafeteria" !in lines.single())
+        }
+    }
+
+    @Test
+    fun `un pendiente sigue dedupeando hasta los 5 minutos`() = runTest {
+        val candidates = FakeCandidateRepository()
+        val createCandidate = CreateCandidate(candidates, FakeActivityRepository())
+
+        createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L))
+
+        assertNull(createCandidate(candidate("Cafeteria Central", detectedAt = 1_000L + DEDUP_WINDOW_MILLIS)))
     }
 
     @Test
