@@ -1,6 +1,8 @@
 package com.eliasgonzalez.expensetracker.domain.catalog
 
+import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
+import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 
 /**
@@ -14,13 +16,21 @@ fun interface CatalogUsage {
 }
 
 /**
- * Una categoria esta en uso si algun gasto la tiene. Los candidatos
- * pendientes no cuentan: solo la sugieren, y al resolverse con una
- * categoria desactivada el comodin "Otro" cubre el caso.
+ * Una categoria esta en uso si algun gasto la tiene, o si algun candidato
+ * PENDIENTE la sugiere: borrarla dejaria a ese candidato apuntando a un id
+ * que ya no existe, y al confirmarlo cambiaria de categoria. Los
+ * candidatos ya resueltos no cuentan (su dato vive en el gasto resultante).
  */
-class ExpenseCatalogUsage(private val expenses: ExpenseRepository) : CatalogUsage {
+class ExpenseCatalogUsage(
+    private val expenses: ExpenseRepository,
+    private val candidates: CandidateRepository,
+) : CatalogUsage {
     override fun isInUse(kind: String, id: String): Boolean = when (kind) {
-        CatalogKind.CATEGORY -> expenses.expenses.value.any { it.categoryId == id }
+        CatalogKind.CATEGORY ->
+            expenses.expenses.value.any { it.categoryId == id } ||
+                candidates.candidates.value.any {
+                    it.status == CandidateStatus.PENDING && it.categorySuggestion == id
+                }
         else -> false
     }
 }
