@@ -39,13 +39,14 @@ data class CategoryUi(
 
 private val FALLBACK_COLOR = Color(0xFF6B7280)
 
-private fun parseHex(hex: String): Color =
+/** Hex `#RRGGBB` a Color; uno inválido cae en gris en vez de romper. */
+fun parseCatalogColor(hex: String): Color =
     runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(FALLBACK_COLOR)
 
 fun CatalogEntry.toCategoryUi(): CategoryUi = CategoryUi(
     id = id,
     label = label,
-    color = parseHex(color),
+    color = parseCatalogColor(color),
     // El ícono sigue atado al id de las categorias de fabrica: renombrarla
     // cambia el texto, no el dibujo.
     icon = Category.entries.find { it.id == id }?.icon(),
