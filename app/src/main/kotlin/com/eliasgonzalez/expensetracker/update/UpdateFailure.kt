@@ -39,14 +39,3 @@ internal fun classifyException(e: Exception): UpdateFailure = when (e) {
     is SSLException -> UpdateFailure.TLS_ERROR
     else -> UpdateFailure.UNKNOWN
 }
-
-/** Texto para el usuario cuando "Buscar actualizaciones" falla. */
-fun UpdateFailure.userMessage(): String = when (this) {
-    UpdateFailure.RATE_LIMITED -> "GitHub limitó las consultas desde tu red; probá más tarde o con otra red"
-    UpdateFailure.HTTP_ERROR -> "GitHub respondió con un error"
-    UpdateFailure.NO_NETWORK -> "sin conexión a internet"
-    UpdateFailure.TIMEOUT -> "GitHub tardó demasiado en responder"
-    UpdateFailure.TLS_ERROR -> "error de conexión segura (revisá la fecha y hora del celular)"
-    UpdateFailure.BAD_RESPONSE -> "respuesta inesperada de GitHub"
-    UpdateFailure.UNKNOWN -> "error desconocido"
-}
