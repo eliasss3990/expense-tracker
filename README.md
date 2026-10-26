@@ -127,14 +127,17 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   ├── RegisterExpenseTileService.kt
 │   ├── QuickAddTrampolineActivity.kt  Activity invisible, solo para cerrar el panel QS
 │   └── QuickAddOverlayService.kt      Ventanita flotante (SYSTEM_ALERT_WINDOW)
+├── logging/                  Destinos de log: LogcatSink (único lugar que usa android.util.Log)
 ├── update/                   Chequeo e instalación de nuevas versiones
 │   ├── UpdateChecker.kt         Consulta la última Release de GitHub, compara versiones
+│   ├── UpdateFailure.kt         Por qué falló la consulta (límite de GitHub, sin red, TLS...) y su mensaje
 │   └── ApkInstaller.kt          Descarga (DownloadManager) + instala (FileProvider)
 ├── domain/                   Sin nada de Android - testeable en JVM puro
 │   ├── model/                   Expense, ExpenseCandidate, ActivityEntry, CatalogEntry, CategoryIds
 │   │                             (CategoryIds = ids de fábrica guardados en la base: nunca cambian)
 │   ├── catalog/                 CatalogDefaults, CategoryPolicy (qué categoría se guarda),
 │   │                             CategoryDisplay (mostrar por id), CatalogUsage (¿en uso?)
+│   ├── log/                     AppLog (fachada de logging) + LogSink (destino). Sin Android
 │   ├── notification/            Puerto CandidateNotifier (retirar la notificación al resolver)
 │   ├── repository/              Interfaces (implementadas en data/local)
 │   ├── filter/                  ExpenseFilters (funciones puras de filtrado del Dashboard)

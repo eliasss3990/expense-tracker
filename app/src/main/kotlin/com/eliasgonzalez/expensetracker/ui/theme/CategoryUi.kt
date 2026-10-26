@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
 import com.eliasgonzalez.expensetracker.domain.catalog.categoryFor
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 
@@ -38,7 +39,10 @@ private val FALLBACK_COLOR = Color(0xFF6B7280)
 
 /** Hex `#RRGGBB` a Color; uno inválido cae en gris en vez de romper. */
 fun parseCatalogColor(hex: String): Color =
-    runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(FALLBACK_COLOR)
+    runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse {
+        AppLog.w("CategoryUi", "Color de categoría inválido '$hex'", it)
+        FALLBACK_COLOR
+    }
 
 fun CatalogEntry.toCategoryUi(): CategoryUi = CategoryUi(
     id = id,

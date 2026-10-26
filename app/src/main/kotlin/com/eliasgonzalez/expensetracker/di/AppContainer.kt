@@ -1,7 +1,6 @@
 package com.eliasgonzalez.expensetracker.di
 
 import android.content.Context
-import android.util.Log
 import com.eliasgonzalez.expensetracker.data.local.DbHelper
 import com.eliasgonzalez.expensetracker.data.local.LocalActivityRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalCandidateRepository
@@ -10,6 +9,7 @@ import com.eliasgonzalez.expensetracker.data.local.LocalExpenseRepository
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogCategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
@@ -83,7 +83,7 @@ class AppContainer(context: Context) {
                 throw e
             } catch (e: Exception) {
                 allLoaded = false
-                Log.e("AppContainer", "Fallo al hidratar un repositorio", e)
+                AppLog.e("AppContainer", "Fallo al hidratar un repositorio", e)
             }
         }
         allLoaded

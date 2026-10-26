@@ -11,6 +11,7 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.ui.EXTRA_EDIT_CANDIDATE_ID
@@ -82,6 +83,7 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
         val info = pm.getApplicationInfo(packageName, 0)
         pm.getApplicationLabel(info).toString()
     } catch (e: Exception) {
+        AppLog.w("NotifListener", "No se pudo leer el nombre de la app de origen", e)
         packageName
     }
 
