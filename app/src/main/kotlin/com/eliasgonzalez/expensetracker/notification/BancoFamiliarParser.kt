@@ -13,7 +13,7 @@ package com.eliasgonzalez.expensetracker.notification
  * resultado en los dos textos. Acá se extrae siempre el mismo campo
  * ("Cliente Beneficiario") y el mismo monto ("Monto a enviar") de
  * ambas variantes, así el mecanismo de deduplicación ya existente
- * (`CreateCandidate`, ventana de 5 min, mismo monto+comercio) los
+ * (`CreateCandidate`, ventana de 5 min contra pendientes y 1 min contra resueltos, mismo monto+comercio) los
  * colapsa en un solo candidato sin necesidad de lógica extra acá.
  *
  * Una transferencia ENTRANTE usa el texto "TRANSFERENCIA DE OTRAS

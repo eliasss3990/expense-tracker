@@ -1,6 +1,7 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
 import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
@@ -10,7 +11,18 @@ import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlin.math.abs
 
-private const val DEDUP_WINDOW_MILLIS = 5 * 60 * 1000L
+internal const val DEDUP_WINDOW_MILLIS = 5 * 60 * 1000L
+
+/**
+ * Contra candidatos YA RESUELTOS (aceptados, editados o rechazados) la ventana es mas corta
+ * que contra los pendientes: el segundo aviso de una misma compra (otro canal, otro mail del
+ * banco) suele llegar en segundos, y si el usuario ya resolvio el primero no hay un pendiente
+ * contra el cual compararlo. Una ventana larga volveria a perder compras reales repetidas
+ * (dos cafes iguales), por eso es corta.
+ */
+internal const val DEDUP_RESOLVED_WINDOW_MILLIS = 60 * 1000L
+
+private const val TAG = "CreateCandidate"
 
 /**
  * Crea un candidato, salvo que ya exista uno muy parecido detectado hace
@@ -53,7 +65,17 @@ class CreateCandidate(
         // perder un gasto detectado. Va FUERA del lock: ver CommitLock.
         awaitReady()
         return mutex.withCommitLock {
-            if (findDuplicate(original) != null) return@withCommitLock null
+            val duplicate = findDuplicate(original)
+            if (duplicate != null) {
+                // Sin montos ni comercios (datos financieros): solo la forma de la decision.
+                AppLog.i(
+                    TAG,
+                    "Duplicado descartado: previo=${duplicate.status} " +
+                        "deltaMs=${abs(duplicate.detectedAt - original.detectedAt)} " +
+                        "mismaApp=${duplicate.sourceApp == original.sourceApp}",
+                )
+                return@withCommitLock null
+            }
 
             // Un parser puede sugerir una categoria que el usuario ya elimino:
             // se guarda lo que realmente existe, no un id colgado.
@@ -73,25 +95,34 @@ class CreateCandidate(
         }
     }
 
-    // Solo compara contra candidatos que sigan PENDING: uno ya
-    // ACCEPTED/EDITED/REJECTED queda en la lista para siempre (no se
-    // borra) y sin este filtro un candidato ya resuelto seguia
-    // "bloqueando" como duplicado a una compra genuinamente distinta y
-    // posterior con el mismo monto+comercio (ej. dos cafes identicos en
-    // el mismo lugar el mismo dia) - el segundo gasto real desaparecia
-    // en silencio, sin ningun error ni aviso.
+    // Pendientes: ventana de 5 minutos. Resueltos (ACCEPTED/EDITED/REJECTED, que nunca se
+    // borran y quedan en la lista para siempre): solo ventana corta
+    // (DEDUP_RESOLVED_WINDOW_MILLIS). Sin limite de ventana, un resuelto "bloqueaba" como
+    // duplicado a una compra genuinamente distinta y posterior con el mismo monto+comercio
+    // (dos cafes iguales el mismo dia), y el segundo gasto real desaparecia en silencio;
+    // sin comparar contra resueltos, el segundo aviso de la MISMA compra, llegado despues de
+    // aceptar/rechazar el primero, volvia a sugerirse. Los gastos cargados a mano no se
+    // comparan.
     private fun findDuplicate(candidate: ExpenseCandidate): ExpenseCandidate? =
         candidates.candidates.value.find { existing ->
-            val merchantOk = if (existing.merchantConfident && candidate.merchantConfident) {
-                existing.merchant.normalizedForMatch() == candidate.merchant.normalizedForMatch()
+            val window = if (existing.status == CandidateStatus.PENDING) {
+                DEDUP_WINDOW_MILLIS
             } else {
-                true
+                DEDUP_RESOLVED_WINDOW_MILLIS
             }
-            existing.status == CandidateStatus.PENDING &&
-                existing.amount == candidate.amount &&
+            // Lo barato primero: la lista incluye todos los candidatos historicos y
+            // normalizar comercios (alocaciones) solo vale la pena si lo demas coincide.
+            existing.amount == candidate.amount &&
                 existing.currency == candidate.currency &&
-                merchantOk &&
-                abs(existing.detectedAt - candidate.detectedAt) <= DEDUP_WINDOW_MILLIS
+                abs(existing.detectedAt - candidate.detectedAt) <= window &&
+                merchantsMatch(existing, candidate)
+        }
+
+    private fun merchantsMatch(a: ExpenseCandidate, b: ExpenseCandidate): Boolean =
+        if (a.merchantConfident && b.merchantConfident) {
+            a.merchant.normalizedForMatch() == b.merchant.normalizedForMatch()
+        } else {
+            true
         }
 
     private fun String.normalizedForMatch(): String =
