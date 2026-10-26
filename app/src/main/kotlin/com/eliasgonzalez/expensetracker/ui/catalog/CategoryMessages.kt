@@ -1,0 +1,27 @@
+package com.eliasgonzalez.expensetracker.ui.catalog
+
+import com.eliasgonzalez.expensetracker.domain.usecase.CatalogRejection
+
+/**
+ * Texto para mostrar cuando una operación del catálogo se rechaza. El
+ * `when` es exhaustivo a propósito: agregar un motivo nuevo a
+ * CatalogRejection no compila hasta que acá tenga su mensaje.
+ */
+fun categoryRejectionMessage(reason: CatalogRejection): String = when (reason) {
+    CatalogRejection.INVALID_LABEL -> "El nombre no puede estar vacío ni pasar de 40 caracteres."
+    CatalogRejection.DUPLICATE_LABEL -> "Ya existe una categoría con ese nombre."
+    CatalogRejection.INVALID_COLOR -> "Elegí un color de la paleta."
+    CatalogRejection.NOT_FOUND -> "Esa categoría ya no existe."
+    CatalogRejection.PROTECTED -> "Esta categoría no se puede desactivar ni eliminar."
+    CatalogRejection.IN_USE -> "Tiene gastos asociados: solo se puede desactivar."
+    CatalogRejection.NOT_READY -> "Todavía se están cargando los datos, probá de nuevo en un momento."
+    CatalogRejection.INVALID_KIND -> "Tipo de lista inválido."
+}
+
+/** Subtítulo de una fila de la pantalla de categorías, ej. "Inactiva · 3 gastos". */
+fun categoryRowSubtitle(active: Boolean, protected: Boolean, expenseCount: Int): String =
+    buildList {
+        if (!active) add("Inactiva")
+        if (protected) add("Siempre activa")
+        add(if (expenseCount == 1) "1 gasto" else "$expenseCount gastos")
+    }.joinToString(" · ")
