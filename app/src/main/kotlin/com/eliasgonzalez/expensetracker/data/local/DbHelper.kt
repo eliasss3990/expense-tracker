@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.data.local
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
 
 /**
  * Persistencia via SQLite directo, no Room.
@@ -67,6 +68,46 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
             )
             """.trimIndent()
         )
+        createCatalogTable(db)
+        seedCatalog(db)
+    }
+
+    // `IF NOT EXISTS` + `INSERT OR IGNORE`: esta rutina corre tanto en una
+    // instalacion nueva como en la migracion v2->v3, y tiene que ser
+    // segura de repetir. NUNCA reemplaza ni borra entradas existentes: lo
+    // que el usuario ya configuro (renombres, desactivadas, propias) se
+    // conserva. Solo agrega las de fabrica que falten.
+    private fun createCatalogTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS catalog_entries (
+                kind TEXT NOT NULL,
+                id TEXT NOT NULL,
+                label TEXT NOT NULL,
+                color TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                built_in INTEGER NOT NULL DEFAULT 0,
+                protected INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (kind, id)
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun seedCatalog(db: SQLiteDatabase) {
+        CatalogDefaults.categories.forEach { entry ->
+            db.execSQL(
+                "INSERT OR IGNORE INTO catalog_entries " +
+                    "(kind, id, label, color, active, sort_order, built_in, protected) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any>(
+                    entry.kind, entry.id, entry.label, entry.color,
+                    if (entry.active) 1 else 0, entry.sortOrder,
+                    if (entry.builtIn) 1 else 0, if (entry.protected) 1 else 0,
+                ),
+            )
+        }
     }
 
     // INCIDENTE REAL (2026-08-31): el "sin usuarios reales todavia" de la
@@ -83,12 +124,19 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_V
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE candidates ADD COLUMN description TEXT NOT NULL DEFAULT ''")
         }
+        if (oldVersion < 3) {
+            createCatalogTable(db)
+            seedCatalog(db)
+        }
     }
 
     companion object {
         private const val DB_NAME = "expense_tracker.db"
         // v2: agrega `description` a `candidates` (paridad con `expenses`,
         // que ya la tenia) -- ver onUpgrade, es un ALTER TABLE real.
-        private const val DB_VERSION = 2
+        // v3: agrega `catalog_entries` (catalogo gestionable, ver
+        // plan-catalogo-gestionable.md) y la siembra desde CatalogDefaults.
+        // Migracion solo aditiva: no toca expenses/candidates/activity_log.
+        private const val DB_VERSION = 3
     }
 }
