@@ -23,8 +23,11 @@ class RejectCandidate(
     private val notifier: CandidateNotifier = CandidateNotifier.None,
 ) {
     suspend operator fun invoke(candidateId: Long): Unit = mutex.withLock {
-        val candidate = candidates.findById(candidateId) ?: return@withLock
-        if (candidate.status != CandidateStatus.PENDING) return@withLock
+        val candidate = candidates.findById(candidateId)
+        if (candidate == null || candidate.status != CandidateStatus.PENDING) {
+            notifier.dismiss(candidateId)
+            return@withLock
+        }
 
         candidates.update(candidate.copy(status = CandidateStatus.REJECTED))
         activity.record(

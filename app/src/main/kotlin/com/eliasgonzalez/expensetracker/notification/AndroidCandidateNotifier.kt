@@ -13,8 +13,12 @@ class AndroidCandidateNotifier(context: Context) : CandidateNotifier {
     private val appContext = context.applicationContext
 
     override fun dismiss(candidateId: Long) {
-        val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(notificationIdFor(candidateId))
+        // Retirar una notificacion es accesorio: si falla, el gasto ya quedo
+        // resuelto y no debe romper el caso de uso (ni crashear al receiver).
+        runCatching {
+            val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(notificationIdFor(candidateId))
+        }
     }
 
     companion object {

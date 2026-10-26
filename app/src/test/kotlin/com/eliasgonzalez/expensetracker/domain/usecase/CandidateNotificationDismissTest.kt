@@ -84,27 +84,28 @@ class CandidateNotificationDismissTest {
     }
 
     @Test
-    fun `no retira nada si el candidato no existe`() = runTest {
+    fun `igual retira la notificacion si el candidato no existe (huerfana)`() = runTest {
         confirm(999)
         edit(999, amount = 1, merchant = "x")
         reject(999)
 
-        assertTrue(notifier.dismissed.isEmpty())
+        assertEquals(listOf(999L, 999L, 999L), notifier.dismissed)
     }
 
     @Test
-    fun `no retira nada si el candidato ya estaba resuelto (idempotencia)`() = runTest {
+    fun `igual retira la notificacion si el candidato ya estaba resuelto (huerfana de v0_4_1)`() = runTest {
         val id = candidates.save(candidate(status = CandidateStatus.ACCEPTED))
 
         confirm(id)
         edit(id, amount = 1, merchant = "x")
         reject(id)
 
-        assertTrue(notifier.dismissed.isEmpty())
+        assertEquals(listOf(id, id, id), notifier.dismissed)
+        assertEquals(CandidateStatus.ACCEPTED, candidates.findById(id)?.status)
     }
 
     @Test
-    fun `resolver dos veces en paralelo retira la notificacion una sola vez`() = runTest {
+    fun `resolver dos veces en paralelo solo apunta a la notificacion de ese candidato`() = runTest {
         val id = candidates.save(candidate())
 
         listOf(
@@ -112,6 +113,6 @@ class CandidateNotificationDismissTest {
             async { reject(id) },
         ).awaitAll()
 
-        assertEquals(1, notifier.dismissed.size)
+        assertEquals(setOf(id), notifier.dismissed.toSet())
     }
 }

@@ -3,8 +3,8 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
-import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.model.Expense
+import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
@@ -32,8 +32,13 @@ class ConfirmCandidate(
     private val notifier: CandidateNotifier = CandidateNotifier.None,
 ) {
     suspend operator fun invoke(candidateId: Long): Long? = mutex.withLock {
-        val candidate = candidates.findById(candidateId) ?: return@withLock null
-        if (candidate.status != CandidateStatus.PENDING) return@withLock null
+        val candidate = candidates.findById(candidateId)
+        if (candidate == null || candidate.status != CandidateStatus.PENDING) {
+            // Ya resuelto (o inexistente): igual se retira la notificacion, por si
+            // quedo una huerfana de una version anterior o de una carrera.
+            notifier.dismiss(candidateId)
+            return@withLock null
+        }
 
         val now = System.currentTimeMillis()
         val expenseId = registerExpense(

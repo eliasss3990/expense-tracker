@@ -68,7 +68,11 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
             confidence = result.confidence,
         )
         scope.launch {
-            val id = ServiceLocator.get().createCandidate(candidate) ?: return@launch
+            val container = ServiceLocator.get()
+            val id = container.createCandidate(candidate) ?: return@launch
+            // Si el usuario ya lo resolvio desde la Bandeja entre el guardado y
+            // este punto, publicar la notificacion la dejaria obsoleta.
+            if (container.findPendingCandidate(id) == null) return@launch
             showCandidateNotification(candidate.copy(id = id))
         }
     }
