@@ -22,6 +22,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
+import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
+import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -105,21 +108,11 @@ private val DARK_PALETTE = OverlayPalette(
     dragHandle = Color.parseColor("#4B4758"),
 )
 
-/** Mismos hex que CategoryPalette (ui/theme/Color.kt) - Vistas nativas no
- * pueden usar androidx.compose.ui.graphics.Color, así que se repiten acá. */
-private fun categoryColor(category: Category): Int = when (category) {
-    Category.FOOD -> Color.parseColor("#F59E0B")
-    Category.FUEL -> Color.parseColor("#EF4444")
-    Category.GROCERIES -> Color.parseColor("#10B981")
-    Category.ENTERTAINMENT -> Color.parseColor("#8B5CF6")
-    Category.SUBSCRIPTIONS -> Color.parseColor("#EC4899")
-    Category.TRANSPORT -> Color.parseColor("#3B82F6")
-    Category.SHOPPING -> Color.parseColor("#F97316")
-    Category.HEALTH -> Color.parseColor("#14B8A6")
-    Category.EDUCATION -> Color.parseColor("#0EA5E9")
-    Category.MECHANIC -> Color.parseColor("#78716C")
-    Category.OTHER -> Color.parseColor("#6B7280")
-}
+/** El color viene del catálogo (hex `#RRGGBB`). Vistas nativas no pueden
+ * usar androidx.compose.ui.graphics.Color, así que se parsea acá; un hex
+ * inválido cae en el gris de "Otro" en vez de romper el overlay. */
+private fun categoryColor(entry: CatalogEntry): Int =
+    runCatching { Color.parseColor(entry.color) }.getOrDefault(Color.parseColor("#6B7280"))
 
 class QuickAddOverlayService : Service() {
 
@@ -130,7 +123,8 @@ class QuickAddOverlayService : Service() {
     private lateinit var amountInput: EditText
     private lateinit var merchantInput: EditText
     private lateinit var descriptionInput: EditText
-    private var selectedCategory: Category = Category.OTHER
+    private var selectedCategoryId: String = Category.OTHER.id
+    private var categoriesFromFallback = false
     private val palette: OverlayPalette
         get() {
             val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
@@ -163,6 +157,17 @@ class QuickAddOverlayService : Service() {
             y = topOffsetPx
         }
         windowManager.addView(rootView, layoutParams)
+
+        // Si el catalogo todavia no habia cargado (primer toque del tile justo despues
+        // de arrancar el proceso) la tarjeta se armo con las categorias de fabrica: se
+        // reconstruye apenas termina de cargar para mostrar las reales (renombres,
+        // propias y sin las desactivadas).
+        if (categoriesFromFallback) {
+            scope.launch {
+                ServiceLocator.get().awaitDataLoaded()
+                rebuildCard()
+            }
+        }
     }
 
     // El Service no se recrea con un cambio de tema (a diferencia de una
@@ -171,6 +176,11 @@ class QuickAddOverlayService : Service() {
     // (o viceversa) mientras sigue flotando en pantalla.
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        rebuildCard()
+    }
+
+    /** Reconstruye la tarjeta conservando lo escrito y el foco (tema nuevo o catalogo recien cargado). */
+    private fun rebuildCard() {
         if (!::rootView.isInitialized) return
 
         val previousAmount = amountInput.text.toString()
@@ -360,22 +370,31 @@ class QuickAddOverlayService : Service() {
         card.addView(descriptionInput, matchWidth())
 
         val categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val categoryChips = mutableMapOf<Category, TextView>()
-        Category.entries.forEach { category ->
+        // Solo las activas. Si el catálogo todavía no cargó (primer toque del
+        // tile justo después de arrancar el proceso) se usan las de fábrica.
+        val snapshot = ServiceLocator.get().observeCatalog.snapshot(CatalogKind.CATEGORY)
+        categoriesFromFallback = snapshot.isEmpty()
+        val categories = snapshot.ifEmpty { CatalogDefaults.categories.filter { it.active } }
+        val categoryChips = mutableMapOf<String, TextView>()
+        categories.forEach { category ->
             val chip = TextView(this).apply {
                 text = category.label
                 textSize = 13f
                 setPadding(dp(12), dp(7), dp(12), dp(7))
-                applyChipStyle(this, category, selected = category == selectedCategory)
+                applyChipStyle(this, category, selected = category.id == selectedCategoryId)
                 // Sin esto TalkBack anuncia el chip como texto plano, no
                 // como algo tocable/seleccionable con estado propio.
                 isClickable = true
                 isFocusable = true
                 contentDescription = "Categoría ${category.label}"
                 setOnClickListener {
-                    val previous = selectedCategory
-                    selectedCategory = category
-                    categoryChips[previous]?.let { applyChipStyle(it, previous, selected = false) }
+                    val previousId = selectedCategoryId
+                    selectedCategoryId = category.id
+                    categories.firstOrNull { entry -> entry.id == previousId }?.let { previousEntry ->
+                        categoryChips[previousId]?.let { previousChip ->
+                            applyChipStyle(previousChip, previousEntry, selected = false)
+                        }
+                    }
                     applyChipStyle(this, category, selected = true)
                 }
             }
@@ -384,7 +403,7 @@ class QuickAddOverlayService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply { marginEnd = dp(8) }
             categoryRow.addView(chip, params)
-            categoryChips[category] = chip
+            categoryChips[category.id] = chip
         }
         val categoryScroll = HorizontalScrollView(this).apply {
             setPadding(0, dp(12), 0, dp(14))
@@ -432,7 +451,7 @@ class QuickAddOverlayService : Service() {
                         Expense(
                             amount = amount,
                             merchant = merchant,
-                            categoryId = selectedCategory.id,
+                            categoryId = selectedCategoryId,
                             description = description,
                             occurredAt = now,
                             createdAt = now,
@@ -455,7 +474,7 @@ class QuickAddOverlayService : Service() {
         return card
     }
 
-    private fun applyChipStyle(chip: TextView, category: Category, selected: Boolean) {
+    private fun applyChipStyle(chip: TextView, category: CatalogEntry, selected: Boolean) {
         val color = categoryColor(category)
         val colors = palette
         val density = resources.displayMetrics.density

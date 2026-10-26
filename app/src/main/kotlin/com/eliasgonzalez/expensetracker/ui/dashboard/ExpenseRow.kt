@@ -44,14 +44,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
-import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.RequiredFieldLabel
 import com.eliasgonzalez.expensetracker.ui.common.relativeDay
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
-import com.eliasgonzalez.expensetracker.ui.theme.brandColor
+import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryLookup
+import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -64,6 +64,7 @@ internal fun ExpenseRow(
     onEnterSelection: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val categoryLookup = rememberCategoryLookup()
     var isEditing by rememberSaveable(expense.id) { mutableStateOf(false) }
     var confirmingDelete by rememberSaveable(expense.id) { mutableStateOf(false) }
     var showingDetail by rememberSaveable(expense.id) { mutableStateOf(false) }
@@ -118,9 +119,9 @@ internal fun ExpenseRow(
                 ExpenseInlineEditForm(
                     expense = expense,
                     onCancel = { isEditing = false },
-                    onSave = { amount, merchant, category, description ->
+                    onSave = { amount, merchant, newCategoryId, description ->
                         scope.launch {
-                            ServiceLocator.get().editExpense(expense.id, amount, merchant, category.id, description)
+                            ServiceLocator.get().editExpense(expense.id, amount, merchant, newCategoryId, description)
                         }
                         isEditing = false
                     },
@@ -131,7 +132,7 @@ internal fun ExpenseRow(
                         Checkbox(checked = selected, onCheckedChange = { onToggleSelect() })
                         Spacer(Modifier.width(4.dp))
                     }
-                    CategoryAvatar(Category.fromId(expense.categoryId))
+                    CategoryAvatar(categoryLookup(expense.categoryId))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -174,13 +175,14 @@ internal fun ExpenseRow(
 private fun ExpenseInlineEditForm(
     expense: Expense,
     onCancel: () -> Unit,
-    onSave: (amount: Long, merchant: String, category: Category, description: String) -> Unit,
+    onSave: (amount: Long, merchant: String, categoryId: String, description: String) -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf(expense.amount.toString()) }
     var merchantText by rememberSaveable { mutableStateOf(expense.merchant) }
     var descriptionText by rememberSaveable { mutableStateOf(expense.description) }
     var categoryId by rememberSaveable { mutableStateOf(expense.categoryId) }
-    val category = Category.fromId(categoryId)
+    // Activas + la categoria actual del gasto aunque este desactivada.
+    val categoryOptions = rememberCategoryOptions(alsoInclude = setOf(expense.categoryId, categoryId))
 
     Text("Editar gasto", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     OutlinedTextField(
@@ -210,12 +212,12 @@ private fun ExpenseInlineEditForm(
         Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Category.entries.forEach { option ->
-            val selected = option == category
+        categoryOptions.forEach { option ->
+            val selected = option.id == categoryId
             FilterChip(
                 selected = selected,
                 onClick = { categoryId = option.id },
-                label = { Text(option.label) },
+                label = { Text(option.chipLabel()) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
                     selectedLabelColor = option.brandColor(),
@@ -232,7 +234,9 @@ private fun ExpenseInlineEditForm(
             onClick = {
                 val amount = amountText.toLongOrNull() ?: 0
                 if (amount <= 0 || merchantText.isBlank()) return@Button
-                onSave(amount, merchantText, category, descriptionText.trim())
+                // Id CRUDO, no el resuelto: con el catalogo sin cargar el lookup cae en "Otro" y
+                // guardar ese id movia el gasto de categoria al corregir solo el monto.
+                onSave(amount, merchantText, categoryId, descriptionText.trim())
             },
             modifier = Modifier.weight(1f),
         ) { Text("Guardar") }
@@ -246,7 +250,7 @@ private fun ExpenseInlineEditForm(
  */
 @Composable
 private fun ExpenseDetailDialog(expense: Expense, onDismiss: () -> Unit) {
-    val category = Category.fromId(expense.categoryId)
+    val category = rememberCategoryLookup()(expense.categoryId)
     val dateFormat = remember {
         java.text.SimpleDateFormat("d 'de' MMMM yyyy, HH:mm", java.util.Locale("es", "PY"))
     }

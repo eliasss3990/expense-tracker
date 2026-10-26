@@ -55,6 +55,7 @@ import com.eliasgonzalez.expensetracker.notification.isPostNotificationsGranted
 import com.eliasgonzalez.expensetracker.ui.activitylog.ActivityScreen
 import com.eliasgonzalez.expensetracker.ui.banners.MissingPermissionsBanner
 import com.eliasgonzalez.expensetracker.ui.banners.UpdateAvailableBanner
+import com.eliasgonzalez.expensetracker.ui.catalog.CategoriesScreen
 import com.eliasgonzalez.expensetracker.ui.dashboard.DashboardScreen
 import com.eliasgonzalez.expensetracker.ui.dashboard.ManualAddSheet
 import com.eliasgonzalez.expensetracker.ui.onboarding.OnboardingPrefs
@@ -69,7 +70,14 @@ import com.eliasgonzalez.expensetracker.update.isNewerVersion
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class Destination(val label: String) { DASHBOARD("Dashboard"), TRAY("Bandeja"), ACTIVITY("Actividad") }
+// CATEGORIES no tiene pestaña en la barra inferior: se entra desde el menú de
+// tres puntos, y "atrás" vuelve al Dashboard como en las otras pantallas.
+private enum class Destination(val label: String) {
+    DASHBOARD("Dashboard"),
+    TRAY("Bandeja"),
+    ACTIVITY("Actividad"),
+    CATEGORIES("Categorías"),
+}
 
 private const val SPLASH_MIN_DURATION_MS = 2000L
 
@@ -227,9 +235,22 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val json = ServiceLocator.get().exportBackup()
-        context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-        Toast.makeText(context, "Backup exportado", Toast.LENGTH_SHORT).show()
+        scope.launch {
+            // Un backup es la unica via de recuperacion: si algun repositorio no
+            // cargo, las listas estan vacias y exportaria un JSON valido pero
+            // incompleto, sin avisar. Mejor negarse.
+            if (!ServiceLocator.get().awaitDataLoaded()) {
+                Toast.makeText(
+                    context,
+                    "Los datos no terminaron de cargar: no se exportó el backup para no guardar uno incompleto",
+                    Toast.LENGTH_LONG,
+                ).show()
+                return@launch
+            }
+            val json = ServiceLocator.get().exportBackup()
+            context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+            Toast.makeText(context, "Backup exportado", Toast.LENGTH_SHORT).show()
+        }
     }
 
     var showAddSheet by remember { mutableStateOf(false) }
@@ -239,8 +260,11 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddSheet = true }) {
-                Icon(Icons.Filled.Add, contentDescription = "Nuevo gasto")
+            // La pantalla de categorías tiene su propio botón "Nueva".
+            if (destination != Destination.CATEGORIES) {
+                FloatingActionButton(onClick = { showAddSheet = true }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Nuevo gasto")
+                }
             }
         },
         topBar = {
@@ -264,6 +288,13 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                             onClick = {
                                 showOverflowMenu = false
                                 scope.launch { checkForUpdate(showUpToDateMessage = true) }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Categorías") },
+                            onClick = {
+                                showOverflowMenu = false
+                                destination = Destination.CATEGORIES
                             },
                         )
                         DropdownMenuItem(
@@ -326,6 +357,7 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                 Destination.DASHBOARD -> DashboardScreen()
                 Destination.TRAY -> TrayScreen()
                 Destination.ACTIVITY -> ActivityScreen()
+                Destination.CATEGORIES -> CategoriesScreen()
             }
         }
     }

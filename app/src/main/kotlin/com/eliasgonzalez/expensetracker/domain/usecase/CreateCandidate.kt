@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
+import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
@@ -41,10 +42,21 @@ class CreateCandidate(
     private val candidates: CandidateRepository,
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
+    private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
+    private val awaitReady: suspend () -> Boolean = { true },
 ) {
-    suspend operator fun invoke(candidate: ExpenseCandidate): Long? = mutex.withLock {
-        if (findDuplicate(candidate) != null) return@withLock null
+    suspend operator fun invoke(original: ExpenseCandidate): Long? = mutex.withLock {
+        // Esperar la carga antes de buscar duplicados (con la lista vacia ninguno se
+        // detectaria). Si la carga fallo se sigue igual: un duplicado es mejor que
+        // perder un gasto detectado.
+        awaitReady()
+        if (findDuplicate(original) != null) return@withLock null
 
+        // Un parser puede sugerir una categoria que el usuario ya elimino:
+        // se guarda lo que realmente existe, no un id colgado.
+        val candidate = original.copy(
+            categorySuggestion = categoryPolicy.forNewExpense(original.categorySuggestion)
+        )
         val id = candidates.save(candidate)
         activity.record(
             ActivityEntry(

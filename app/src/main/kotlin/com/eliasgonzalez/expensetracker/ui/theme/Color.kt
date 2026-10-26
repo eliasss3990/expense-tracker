@@ -19,19 +19,3 @@ val OutlineDark = Color(0xFF2E2C3A)
 
 val ExpenseNegative = Color(0xFFDC2626)
 val IncomePositive = Color(0xFF16A34A)
-
-/** Paleta fija por categoría - se usa tanto en light como dark (los
- * fondos "container" se derivan con alpha, no un color aparte por tema). */
-object CategoryPalette {
-    val FOOD = Color(0xFFF59E0B)
-    val FUEL = Color(0xFFEF4444)
-    val GROCERIES = Color(0xFF10B981)
-    val ENTERTAINMENT = Color(0xFF8B5CF6)
-    val SUBSCRIPTIONS = Color(0xFFEC4899)
-    val TRANSPORT = Color(0xFF3B82F6)
-    val SHOPPING = Color(0xFFF97316)
-    val HEALTH = Color(0xFF14B8A6)
-    val EDUCATION = Color(0xFF0EA5E9)
-    val MECHANIC = Color(0xFF78716C)
-    val OTHER = Color(0xFF6B7280)
-}

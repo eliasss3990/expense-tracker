@@ -19,9 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.filter.DateRangeFilter
-import com.eliasgonzalez.expensetracker.ui.theme.brandColor
+import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -38,10 +37,15 @@ internal fun ExpenseFilterSheet(
     availableMonths: List<YearMonth>,
     onSelectMonth: (YearMonth) -> Unit,
     selectedCategories: Set<String>,
+    usedCategoryIds: Set<String>,
     onToggleCategory: (String) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Activas + las desactivadas que todavia tienen gastos (o ya estan
+    // elegidas): hay que poder filtrar los gastos viejos de una categoria
+    // apagada, aunque ya no se pueda elegir para un gasto nuevo.
+    val categoryOptions = rememberCategoryOptions(alsoInclude = usedCategoryIds + selectedCategories)
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Row(
@@ -101,12 +105,12 @@ internal fun ExpenseFilterSheet(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Category.entries.forEach { option ->
+                categoryOptions.forEach { option ->
                     val selected = option.id in selectedCategories
                     FilterChip(
                         selected = selected,
                         onClick = { onToggleCategory(option.id) },
-                        label = { Text(option.label) },
+                        label = { Text(option.chipLabel()) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
                             selectedLabelColor = option.brandColor(),
