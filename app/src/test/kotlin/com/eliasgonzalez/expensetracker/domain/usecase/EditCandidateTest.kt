@@ -1,7 +1,7 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -39,7 +39,7 @@ class EditCandidateTest {
     private fun pendingCandidate(
         amount: Long = 85_000,
         merchant: String = "MCDONALDS",
-        categorySuggestion: String = Category.OTHER.id,
+        categorySuggestion: String = CategoryIds.OTHER,
         status: CandidateStatus = CandidateStatus.PENDING,
     ) = ExpenseCandidate(
         amount = amount,
@@ -223,12 +223,12 @@ class EditCandidateTest {
         val activity = FakeActivityRepository()
         val registerExpense = RegisterExpense(expenses, activity)
         val editCandidate = EditCandidate(candidates, registerExpense, activity)
-        val candidateId = candidates.save(pendingCandidate(categorySuggestion = Category.FOOD.id))
+        val candidateId = candidates.save(pendingCandidate(categorySuggestion = CategoryIds.FOOD))
 
         editCandidate(candidateId, amount = 1_000L, merchant = "Comercio", categoryId = "   ")
 
-        assertEquals(Category.FOOD.id, expenses.expenses.value.first().categoryId)
-        assertEquals(Category.FOOD.id, candidates.findById(candidateId)?.categorySuggestion)
+        assertEquals(CategoryIds.FOOD, expenses.expenses.value.first().categoryId)
+        assertEquals(CategoryIds.FOOD, candidates.findById(candidateId)?.categorySuggestion)
     }
 
     @Test
@@ -238,12 +238,12 @@ class EditCandidateTest {
         val activity = FakeActivityRepository()
         val registerExpense = RegisterExpense(expenses, activity)
         val editCandidate = EditCandidate(candidates, registerExpense, activity)
-        val candidateId = candidates.save(pendingCandidate(categorySuggestion = Category.FOOD.id))
+        val candidateId = candidates.save(pendingCandidate(categorySuggestion = CategoryIds.FOOD))
 
-        editCandidate(candidateId, amount = 1_000L, merchant = "Comercio", categoryId = Category.TRANSPORT.id)
+        editCandidate(candidateId, amount = 1_000L, merchant = "Comercio", categoryId = CategoryIds.TRANSPORT)
 
-        assertEquals(Category.TRANSPORT.id, expenses.expenses.value.first().categoryId)
-        assertEquals(Category.TRANSPORT.id, candidates.findById(candidateId)?.categorySuggestion)
+        assertEquals(CategoryIds.TRANSPORT, expenses.expenses.value.first().categoryId)
+        assertEquals(CategoryIds.TRANSPORT, candidates.findById(candidateId)?.categorySuggestion)
     }
 
     @Test

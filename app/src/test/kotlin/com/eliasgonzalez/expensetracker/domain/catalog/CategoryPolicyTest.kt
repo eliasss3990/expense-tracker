@@ -2,7 +2,7 @@ package com.eliasgonzalez.expensetracker.domain.catalog
 
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.usecase.FakeCatalogRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -20,20 +20,20 @@ class CategoryPolicyTest {
 
     @Test
     fun `una categoria activa se respeta en un gasto nuevo`() = runTest {
-        assertEquals(Category.FOOD.id, CatalogCategoryPolicy(catalog()).forNewExpense(Category.FOOD.id))
+        assertEquals(CategoryIds.FOOD, CatalogCategoryPolicy(catalog()).forNewExpense(CategoryIds.FOOD))
     }
 
     @Test
     fun `una categoria DESACTIVADA se respeta - desactivar solo la oculta de los selectores`() = runTest {
-        val policy = CatalogCategoryPolicy(catalog(Category.FUEL.id))
+        val policy = CatalogCategoryPolicy(catalog(CategoryIds.FUEL))
 
-        assertEquals(Category.FUEL.id, policy.forNewExpense(Category.FUEL.id))
+        assertEquals(CategoryIds.FUEL, policy.forNewExpense(CategoryIds.FUEL))
     }
 
     @Test
     fun `solo un id que no existe en el catalogo cae en Otro`() = runTest {
         assertEquals(
-            Category.OTHER.id,
+            CategoryIds.OTHER,
             CatalogCategoryPolicy(catalog()).forNewExpense("borrada-por-una-carrera"),
         )
     }
@@ -51,22 +51,22 @@ class CategoryPolicyTest {
         val repo = catalog()
         repo.save(CatalogEntry("payment_method", "efectivo", "Efectivo", "#112233"))
 
-        assertEquals(Category.OTHER.id, CatalogCategoryPolicy(repo).forNewExpense("efectivo"))
+        assertEquals(CategoryIds.OTHER, CatalogCategoryPolicy(repo).forNewExpense("efectivo"))
     }
 
     @Test
     fun `sin ninguna categoria cargada no corrompe el dato - respeta lo pedido`() = runTest {
         assertEquals(
-            Category.FUEL.id,
-            CatalogCategoryPolicy(FakeCatalogRepository()).forNewExpense(Category.FUEL.id),
+            CategoryIds.FUEL,
+            CatalogCategoryPolicy(FakeCatalogRepository()).forNewExpense(CategoryIds.FUEL),
         )
     }
 
     @Test
     fun `al editar sin cambiar la categoria se conserva, aunque este desactivada o ya no exista`() = runTest {
-        val policy = CatalogCategoryPolicy(catalog(Category.FUEL.id))
+        val policy = CatalogCategoryPolicy(catalog(CategoryIds.FUEL))
 
-        assertEquals(Category.FUEL.id, policy.forEditedExpense(Category.FUEL.id, Category.FUEL.id))
+        assertEquals(CategoryIds.FUEL, policy.forEditedExpense(CategoryIds.FUEL, CategoryIds.FUEL))
         assertEquals("huerfana", policy.forEditedExpense("huerfana", "huerfana"))
     }
 
@@ -74,8 +74,8 @@ class CategoryPolicyTest {
     fun `al editar y cambiar a otra categoria existente se respeta, a una inexistente cae en Otro`() = runTest {
         val policy = CatalogCategoryPolicy(catalog())
 
-        assertEquals(Category.HEALTH.id, policy.forEditedExpense(Category.HEALTH.id, Category.FOOD.id))
-        assertEquals(Category.OTHER.id, policy.forEditedExpense("no-existe", Category.FOOD.id))
+        assertEquals(CategoryIds.HEALTH, policy.forEditedExpense(CategoryIds.HEALTH, CategoryIds.FOOD))
+        assertEquals(CategoryIds.OTHER, policy.forEditedExpense("no-existe", CategoryIds.FOOD))
     }
 
     @Test
@@ -84,12 +84,25 @@ class CategoryPolicyTest {
         val listo = CompletableDeferred<Unit>()
         val policy = CatalogCategoryPolicy(repo) { listo.await() }
 
-        val resultado = async { policy.forNewExpense(Category.FOOD.id) }
+        val resultado = async { policy.forNewExpense(CategoryIds.FOOD) }
         runCurrent()
         assertFalse(resultado.isCompleted)
 
         CatalogDefaults.categories.forEach { repo.save(it) }
         listo.complete(Unit)
-        assertEquals(Category.FOOD.id, resultado.await())
+        assertEquals(CategoryIds.FOOD, resultado.await())
+    }
+
+    @Test
+    fun `el comodin es la entrada protegida del catalogo, no un id fijo`() = runTest {
+        // Catalogo cuyo comodin NO se llama OTHER: la politica tiene que caer en el.
+        val repo = FakeCatalogRepository(
+            listOf(
+                CatalogEntry(CatalogKind.CATEGORY, "COMIDA", "Comida", "#F59E0B", sortOrder = 0),
+                CatalogEntry(CatalogKind.CATEGORY, "RESTO", "Resto", "#6B7280", sortOrder = 1, protected = true),
+            )
+        )
+
+        assertEquals("RESTO", CatalogCategoryPolicy(repo).forNewExpense("id-inexistente"))
     }
 }

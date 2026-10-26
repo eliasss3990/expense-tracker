@@ -25,7 +25,7 @@ import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import kotlinx.coroutines.CoroutineScope
@@ -123,7 +123,7 @@ class QuickAddOverlayService : Service() {
     private lateinit var amountInput: EditText
     private lateinit var merchantInput: EditText
     private lateinit var descriptionInput: EditText
-    private var selectedCategoryId: String = Category.OTHER.id
+    private var selectedCategoryId: String = CategoryIds.OTHER
     private var categoriesFromFallback = false
     private val palette: OverlayPalette
         get() {

@@ -12,13 +12,10 @@ import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
 import com.eliasgonzalez.expensetracker.domain.catalog.categoryFor
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
-import com.eliasgonzalez.expensetracker.domain.model.Category
 
 /**
  * Lo que la UI necesita para dibujar una categoria, armado desde una
- * entrada del catalogo. Reemplaza al enum `Category` en las pantallas:
- * conserva los mismos nombres (`label`, `id`, `brandColor()`) para que el
- * cambio en cada una sea casi mecanico.
+ * entrada del catalogo, con `label`, `id` y `brandColor()`.
  *
  * `icon` es null para las categorias creadas por el usuario: el avatar
  * muestra entonces la inicial del nombre (no hay un ícono que asignar).
@@ -49,7 +46,7 @@ fun CatalogEntry.toCategoryUi(): CategoryUi = CategoryUi(
     color = parseCatalogColor(color),
     // El ícono sigue atado al id de las categorias de fabrica: renombrarla
     // cambia el texto, no el dibujo.
-    icon = Category.entries.find { it.id == id }?.icon(),
+    icon = builtInCategoryIcon(id),
     active = active,
 )
 

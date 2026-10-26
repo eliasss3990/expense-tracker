@@ -1,7 +1,7 @@
 package com.eliasgonzalez.expensetracker.data.local
 
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,7 +9,7 @@ import org.junit.Test
 /**
  * La migracion v2->v3 siembra CatalogSeedV3, una copia CONGELADA, no
  * CatalogDefaults (que cambia con el codigo). Hoy las dos son identicas; si
- * CatalogDefaults cambia (categoria nueva, renombre, se elimina el enum), el
+ * CatalogDefaults cambia (categoria nueva, renombre), el
  * primer test falla y obliga a decidir a conciencia si hace falta una
  * migracion nueva con su propia lista - en vez de que el resultado del upgrade
  * dependa en silencio de la version de la app.
@@ -26,7 +26,7 @@ class CatalogSeedV3Test {
         val ids = CatalogSeedV3.categories.map { it.id }
 
         assertEquals(ids.size, ids.toSet().size)
-        assertEquals(Category.entries.map { it.id }, ids)
+        assertEquals(CategoryIds.builtIn, ids)
     }
 
     @Test

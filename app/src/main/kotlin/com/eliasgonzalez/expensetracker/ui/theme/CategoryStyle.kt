@@ -13,20 +13,24 @@ import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 
-/** Ícono de cada categoría de fábrica (las propias del usuario no tienen: ver
- * CategoryUi). El color vive en el catálogo, no acá. */
-fun Category.icon(): ImageVector = when (this) {
-    Category.FOOD -> Icons.Filled.Fastfood
-    Category.FUEL -> Icons.Filled.LocalGasStation
-    Category.GROCERIES -> Icons.Filled.ShoppingCart
-    Category.ENTERTAINMENT -> Icons.Filled.Movie
-    Category.SUBSCRIPTIONS -> Icons.Filled.Subscriptions
-    Category.TRANSPORT -> Icons.Filled.DirectionsBus
-    Category.SHOPPING -> Icons.Filled.ShoppingBag
-    Category.HEALTH -> Icons.Filled.LocalHospital
-    Category.EDUCATION -> Icons.Filled.School
-    Category.MECHANIC -> Icons.Filled.Build
-    Category.OTHER -> Icons.Filled.QuestionMark
+/**
+ * Ícono de las categorías de fábrica, por id. Las propias del usuario no tienen
+ * ícono (devuelve null y el avatar muestra la inicial: ver CategoryUi). El color
+ * vive en el catálogo, no acá.
+ */
+fun builtInCategoryIcon(id: String): ImageVector? = when (id) {
+    CategoryIds.FOOD -> Icons.Filled.Fastfood
+    CategoryIds.FUEL -> Icons.Filled.LocalGasStation
+    CategoryIds.GROCERIES -> Icons.Filled.ShoppingCart
+    CategoryIds.ENTERTAINMENT -> Icons.Filled.Movie
+    CategoryIds.SUBSCRIPTIONS -> Icons.Filled.Subscriptions
+    CategoryIds.TRANSPORT -> Icons.Filled.DirectionsBus
+    CategoryIds.SHOPPING -> Icons.Filled.ShoppingBag
+    CategoryIds.HEALTH -> Icons.Filled.LocalHospital
+    CategoryIds.EDUCATION -> Icons.Filled.School
+    CategoryIds.MECHANIC -> Icons.Filled.Build
+    CategoryIds.OTHER -> Icons.Filled.QuestionMark
+    else -> null
 }

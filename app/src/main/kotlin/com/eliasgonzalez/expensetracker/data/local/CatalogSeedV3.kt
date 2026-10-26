@@ -5,8 +5,8 @@ import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 
 /**
  * Lista CONGELADA de lo que sembro la migracion v2->v3. Es literal a
- * proposito y NO se deriva de CatalogDefaults/Category: esos cambian con el
- * codigo (se agrega una categoria, se renombra una, se elimina el enum), y
+ * proposito y NO se deriva de CatalogDefaults: ese cambia con el codigo
+ * (se agrega una categoria, se renombra una), y
  * una migracion ya publicada tiene que producir siempre el mismo resultado
  * sin importar con que version de la app se haga el upgrade. Si
  * CatalogDefaults cambia, CatalogSeedV3Test falla y obliga a decidir si hace
