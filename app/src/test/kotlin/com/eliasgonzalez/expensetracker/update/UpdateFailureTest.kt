@@ -11,10 +11,10 @@ import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
 
 /**
- * Antes cualquier fallo al buscar actualizaciones se veia igual ("No se pudo
- * comprobar"), asi que un limite de GitHub, un celular sin red y una fecha
- * mal puesta eran indistinguibles. Estos tests fijan que cada causa se clasifica
- * por separado y que cada una tiene su mensaje.
+ * Antes cualquier fallo al buscar actualizaciones era indistinguible (un limite de
+ * GitHub, un celular sin red y una fecha mal puesta daban lo mismo). Estos tests fijan
+ * que cada causa se clasifica por separado: el aviso al usuario es generico y el
+ * motivo concreto queda en el log (etiqueta UpdateChecker).
  */
 class UpdateFailureTest {
 
@@ -55,33 +55,13 @@ class UpdateFailureTest {
     }
 
     @Test
-    fun `un fallo de TLS apunta a la fecha y hora del celular`() {
-        val tls = classifyException(SSLHandshakeException("Chain validation failed"))
-
-        assertEquals(UpdateFailure.TLS_ERROR, tls)
-        assertTrue(tls.userMessage().contains("fecha"))
+    fun `un fallo de TLS se distingue (tipicamente fecha u hora incorrecta en el celular)`() {
+        assertEquals(UpdateFailure.TLS_ERROR, classifyException(SSLHandshakeException("Chain validation failed")))
     }
 
     @Test
     fun `cualquier otra excepcion es desconocida, no se disfraza de otra cosa`() {
         assertEquals(UpdateFailure.UNKNOWN, classifyException(IOException("raro")))
         assertEquals(UpdateFailure.UNKNOWN, classifyException(IllegalStateException("raro")))
-    }
-
-    // --- mensajes ------------------------------------------------------
-
-    @Test
-    fun `cada motivo tiene su propio mensaje no vacio`() {
-        val mensajes = UpdateFailure.entries.map { it.userMessage() }
-
-        assertTrue(mensajes.all { it.isNotBlank() })
-        assertEquals(mensajes.size, mensajes.toSet().size)
-    }
-
-    @Test
-    fun `el mensaje del limite sugiere probar mas tarde o con otra red`() {
-        val mensaje = UpdateFailure.RATE_LIMITED.userMessage()
-
-        assertTrue(mensaje.contains("más tarde") && mensaje.contains("otra red"))
     }
 }

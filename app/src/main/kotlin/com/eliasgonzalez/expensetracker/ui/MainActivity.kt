@@ -69,7 +69,6 @@ import com.eliasgonzalez.expensetracker.update.ReleaseInfo
 import com.eliasgonzalez.expensetracker.update.UpdateCheckResult
 import com.eliasgonzalez.expensetracker.update.UpdateChecker
 import com.eliasgonzalez.expensetracker.update.isNewerVersion
-import com.eliasgonzalez.expensetracker.update.userMessage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -147,14 +146,10 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
 
     suspend fun checkForUpdate(showUpToDateMessage: Boolean) {
         when (val result = UpdateChecker.fetchLatestReleaseResult()) {
-            // El motivo se muestra solo en la busqueda manual; la silenciosa al abrir ya
-            // lo dejo en el log (UpdateChecker) sin molestar con ningun mensaje.
+            // Mensaje generico a proposito: el motivo concreto (limite de GitHub, sin red, TLS...)
+            // queda en el log con la etiqueta UpdateChecker, no en un aviso que se corta.
             is UpdateCheckResult.Failed -> if (showUpToDateMessage) {
-                Toast.makeText(
-                    context,
-                    "No se pudo comprobar actualizaciones: ${result.reason.userMessage()}",
-                    Toast.LENGTH_LONG,
-                ).show()
+                Toast.makeText(context, "No se pudo comprobar actualizaciones", Toast.LENGTH_SHORT).show()
             }
             is UpdateCheckResult.Found -> {
                 val release = result.release
