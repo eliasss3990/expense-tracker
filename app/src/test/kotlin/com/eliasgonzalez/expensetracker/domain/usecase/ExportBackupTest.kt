@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
+import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -32,15 +33,58 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
 
         val json = export()
         val root = MiniJson.parse(json) as Map<*, *>
 
-        assertEquals(1.0, root["formatVersion"])
+        // v2 agrega la lista "catalog"; un importador futuro se guia por este numero.
+        assertEquals(2.0, root["formatVersion"])
         assertTrue((root["expenses"] as List<*>).isEmpty())
         assertTrue((root["candidates"] as List<*>).isEmpty())
         assertTrue((root["activity"] as List<*>).isEmpty())
+        assertTrue((root["catalog"] as List<*>).isEmpty())
+    }
+
+    @Test
+    fun `el backup incluye el catalogo con categorias propias, renombres y desactivadas`() = runTest {
+        val catalog = FakeCatalogRepository()
+        catalog.save(CatalogEntry("category", "FOOD", "Restaurantes", "#F59E0B", active = true, sortOrder = 0, builtIn = true))
+        catalog.save(CatalogEntry("category", "uuid-1", "Mascotas \"Ñandú\"", "#A855F7", active = false, sortOrder = 11))
+        catalog.save(CatalogEntry("category", "OTHER", "Otro", "#6B7280", sortOrder = 10, builtIn = true, protected = true))
+        val export = ExportBackup(FakeExpenseRepository(), FakeCandidateRepository(), FakeActivityRepository(), catalog)
+
+        val root = MiniJson.parse(export()) as Map<*, *>
+        val entries = (root["catalog"] as List<*>).map { it as Map<*, *> }
+        val byId = entries.associateBy { it["id"] }
+
+        assertEquals(3, entries.size)
+        assertEquals("Restaurantes", byId["FOOD"]!!["label"])
+        assertEquals("category", byId["FOOD"]!!["kind"])
+        assertEquals(true, byId["FOOD"]!!["builtIn"])
+        // El nombre con comillas y acento sobrevive al escapado a mano.
+        assertEquals("Mascotas \"Ñandú\"", byId["uuid-1"]!!["label"])
+        assertEquals(false, byId["uuid-1"]!!["active"])
+        assertEquals("#A855F7", byId["uuid-1"]!!["color"])
+        assertEquals(true, byId["OTHER"]!!["protected"])
+        assertEquals(11.0, byId["uuid-1"]!!["sortOrder"])
+    }
+
+    @Test
+    fun `un gasto con categoria propia queda describible - su categoryId aparece en el catalogo del mismo backup`() = runTest {
+        val expenses = FakeExpenseRepository()
+        val catalog = FakeCatalogRepository()
+        catalog.save(CatalogEntry("category", "uuid-9", "Regalos", "#D946EF", sortOrder = 12))
+        expenses.save(
+            Expense(amount = 5_000, merchant = "x", categoryId = "uuid-9", occurredAt = 1L, createdAt = 1L, source = ExpenseSource.MANUAL)
+        )
+        val export = ExportBackup(expenses, FakeCandidateRepository(), FakeActivityRepository(), catalog)
+
+        val root = MiniJson.parse(export()) as Map<*, *>
+        val categoryId = ((root["expenses"] as List<*>).first() as Map<*, *>)["categoryId"]
+        val catalogIds = (root["catalog"] as List<*>).map { (it as Map<*, *>)["id"] }
+
+        assertTrue("el backup no puede referenciar una categoria que no describe", categoryId in catalogIds)
     }
 
     @Test
@@ -48,7 +92,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
         val merchantOriginal = """Pizza "La Preferida""""
 
         expenses.save(
@@ -73,7 +117,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
         val merchantOriginal = """C:\Users\test\backup"""
 
         expenses.save(
@@ -98,7 +142,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
         // Caso trampa clasico: si el orden de reemplazo (primero backslash,
         // luego comilla) estuviera invertido, esto produciria JSON invalido.
         val merchantOriginal = "Raro\\\""
@@ -125,7 +169,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
         val merchantOriginal = "Super\nMercado"
 
         expenses.save(
@@ -150,7 +194,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
         val merchantOriginal = "Ñoño's Café 🍔₲日本語𝕊"
 
         expenses.save(
@@ -180,7 +224,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
         val merchantOriginal = "Super\rMercado"
 
         expenses.save(
@@ -213,7 +257,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
         val merchantOriginal = "Super\tMercado"
 
         expenses.save(
@@ -245,7 +289,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
 
         candidates.save(
             ExpenseCandidate(
@@ -274,7 +318,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
 
         candidates.save(
             ExpenseCandidate(
@@ -303,7 +347,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
 
         activity.record(
             ActivityEntry(
@@ -328,7 +372,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
         val summaryOriginal = """Editado: "Kiosco" -> C:\nuevo\valor — ₲1,000"""
 
         activity.record(
@@ -352,7 +396,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
 
         expenses.save(
             Expense(amount = 1_000, merchant = "Uno", occurredAt = 1L, createdAt = 1L, source = ExpenseSource.MANUAL)
@@ -380,7 +424,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
 
         expenses.save(
             Expense(
@@ -405,7 +449,7 @@ class ExportBackupTest {
         val expenses = FakeExpenseRepository()
         val candidates = FakeCandidateRepository()
         val activity = FakeActivityRepository()
-        val export = ExportBackup(expenses, candidates, activity)
+        val export = ExportBackup(expenses, candidates, activity, FakeCatalogRepository())
 
         expenses.save(
             Expense(

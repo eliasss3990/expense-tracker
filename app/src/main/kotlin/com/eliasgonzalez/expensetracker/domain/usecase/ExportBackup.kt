@@ -1,13 +1,16 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
+import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
+import com.eliasgonzalez.expensetracker.domain.repository.CatalogRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 
-private const val BACKUP_FORMAT_VERSION = 1
+// v2: agrega la lista `catalog` (categorías propias, renombres y desactivadas).
+private const val BACKUP_FORMAT_VERSION = 2
 
 /**
  * Backup/exportación como primer paso hacia sync real: mucho más simple
@@ -19,6 +22,7 @@ class ExportBackup(
     private val expenses: ExpenseRepository,
     private val candidates: CandidateRepository,
     private val activity: ActivityRepository,
+    private val catalog: CatalogRepository,
 ) {
     operator fun invoke(): String {
         val sb = StringBuilder()
@@ -33,6 +37,9 @@ class ExportBackup(
         sb.append("\n  ],\n")
         sb.append("  \"activity\": [\n")
         sb.append(activity.recent.value.joinToString(",\n") { it.toJson("    ") })
+        sb.append("\n  ],\n")
+        sb.append("  \"catalog\": [\n")
+        sb.append(catalog.entries.value.joinToString(",\n") { it.toJson("    ") })
         sb.append("\n  ]\n")
         sb.append("}\n")
         return sb.toString()
@@ -44,6 +51,10 @@ class ExportBackup(
 
     private fun ExpenseCandidate.toJson(indent: String) = """
         |$indent{"id": $id, "amount": $amount, "currency": ${currency.q()}, "merchant": ${merchant.q()}, "categorySuggestion": ${categorySuggestion.q()}, "occurredAt": $occurredAt, "detectedAt": $detectedAt, "sourceType": ${sourceType.name.q()}, "sourceApp": ${sourceApp?.q() ?: "null"}, "parserId": ${parserId?.q() ?: "null"}, "confidence": $confidence, "status": ${status.name.q()}}
+    """.trimMargin()
+
+    private fun CatalogEntry.toJson(indent: String) = """
+        |$indent{"kind": ${kind.q()}, "id": ${id.q()}, "label": ${label.q()}, "color": ${color.q()}, "active": $active, "sortOrder": $sortOrder, "builtIn": $builtIn, "protected": $protected}
     """.trimMargin()
 
     private fun ActivityEntry.toJson(indent: String) = """

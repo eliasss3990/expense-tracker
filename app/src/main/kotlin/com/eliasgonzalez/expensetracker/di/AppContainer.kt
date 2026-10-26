@@ -115,7 +115,7 @@ class AppContainer(context: Context) {
     val rejectCandidate = RejectCandidate(candidateRepository, activityRepository, candidateWriteMutex, candidateNotifier)
     val editExpense = EditExpense(expenseRepository, activityRepository, expenseWriteMutex, categoryPolicy)
     val deleteExpense = DeleteExpense(expenseRepository, activityRepository, expenseWriteMutex)
-    val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository)
+    val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository, catalogRepository)
     val observeExpenses = ObserveExpenses(expenseRepository)
     val observeCandidates = ObserveCandidates(candidateRepository)
     val observeActivity = ObserveActivity(activityRepository)
