@@ -50,13 +50,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
-import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.EXPENSES_PAGE_SIZE
 import com.eliasgonzalez.expensetracker.ui.common.EmptyState
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
-import com.eliasgonzalez.expensetracker.ui.theme.brandColor
+import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryLookup
+import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
 
 @Composable
@@ -114,9 +114,9 @@ private fun PendingCard(candidate: ExpenseCandidate) {
                 InlineEditForm(
                     candidate = candidate,
                     onCancel = { isEditing = false },
-                    onSave = { amount, merchant, category ->
+                    onSave = { amount, merchant, newCategoryId ->
                         scope.launch {
-                            ServiceLocator.get().editCandidate(candidate.id, amount, merchant, category.id)
+                            ServiceLocator.get().editCandidate(candidate.id, amount, merchant, newCategoryId)
                         }
                     },
                 )
@@ -139,7 +139,7 @@ private fun PendingCardSummary(
     onEdit: () -> Unit,
     onReject: () -> Unit,
 ) {
-    val category = Category.fromId(candidate.categorySuggestion)
+    val category = rememberCategoryLookup()(candidate.categorySuggestion)
     Row(verticalAlignment = Alignment.CenterVertically) {
         CategoryAvatar(category)
         Spacer(Modifier.width(12.dp))
@@ -206,12 +206,13 @@ private fun PendingCardSummary(
 private fun InlineEditForm(
     candidate: ExpenseCandidate,
     onCancel: () -> Unit,
-    onSave: (amount: Long, merchant: String, category: Category) -> Unit,
+    onSave: (amount: Long, merchant: String, categoryId: String) -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf(candidate.amount.toString()) }
     var merchantText by rememberSaveable { mutableStateOf(candidate.merchant) }
     var categoryId by rememberSaveable { mutableStateOf(candidate.categorySuggestion) }
-    val category = Category.fromId(categoryId)
+    // Activas + la sugerida por el parser aunque este desactivada.
+    val categoryOptions = rememberCategoryOptions(alsoInclude = setOf(candidate.categorySuggestion, categoryId))
 
     Text("Editar gasto", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     OutlinedTextField(
@@ -233,12 +234,12 @@ private fun InlineEditForm(
         Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Category.entries.forEach { option ->
-            val selected = option == category
+        categoryOptions.forEach { option ->
+            val selected = option.id == categoryId
             FilterChip(
                 selected = selected,
                 onClick = { categoryId = option.id },
-                label = { Text(option.label) },
+                label = { Text(option.chipLabel()) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
                     selectedLabelColor = option.brandColor(),
@@ -255,7 +256,8 @@ private fun InlineEditForm(
             onClick = {
                 val amount = amountText.toLongOrNull() ?: 0
                 if (amount <= 0 || merchantText.isBlank()) return@Button
-                onSave(amount, merchantText, category)
+                // Id crudo, no el resuelto (ver ExpenseRow).
+                onSave(amount, merchantText, categoryId)
             },
             modifier = Modifier.weight(1f),
         ) { Text("Guardar") }

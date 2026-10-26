@@ -21,8 +21,11 @@ class RejectCandidate(
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
     private val notifier: CandidateNotifier = CandidateNotifier.None,
+    private val awaitReady: suspend () -> Boolean = { true },
 ) {
     suspend operator fun invoke(candidateId: Long): Unit = mutex.withLock {
+        // Ver el comentario equivalente en ConfirmCandidate.
+        if (!awaitReady()) return@withLock
         val candidate = candidates.findById(candidateId)
         if (candidate == null || candidate.status != CandidateStatus.PENDING) {
             notifier.dismiss(candidateId)

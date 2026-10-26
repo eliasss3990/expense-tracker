@@ -12,26 +12,11 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Subscriptions
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.eliasgonzalez.expensetracker.domain.model.Category
 
-/** Ícono + color de marca por categoría - un solo lugar para no repetir
- * este mapeo en cada pantalla que muestra un gasto o candidato. */
-fun Category.brandColor(): Color = when (this) {
-    Category.FOOD -> CategoryPalette.FOOD
-    Category.FUEL -> CategoryPalette.FUEL
-    Category.GROCERIES -> CategoryPalette.GROCERIES
-    Category.ENTERTAINMENT -> CategoryPalette.ENTERTAINMENT
-    Category.SUBSCRIPTIONS -> CategoryPalette.SUBSCRIPTIONS
-    Category.TRANSPORT -> CategoryPalette.TRANSPORT
-    Category.SHOPPING -> CategoryPalette.SHOPPING
-    Category.HEALTH -> CategoryPalette.HEALTH
-    Category.EDUCATION -> CategoryPalette.EDUCATION
-    Category.MECHANIC -> CategoryPalette.MECHANIC
-    Category.OTHER -> CategoryPalette.OTHER
-}
-
+/** Ícono de cada categoría de fábrica (las propias del usuario no tienen: ver
+ * CategoryUi). El color vive en el catálogo, no acá. */
 fun Category.icon(): ImageVector = when (this) {
     Category.FOOD -> Icons.Filled.Fastfood
     Category.FUEL -> Icons.Filled.LocalGasStation

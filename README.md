@@ -48,9 +48,14 @@ confirmar un gasto sin que el usuario lo revise.
   flotante), con descripción opcional, sin pasar por una notificación
   detectada. Los campos obligatorios (Monto, Comercio) se marcan con
   asterisco rojo.
-- Categorías fijas seleccionables al aceptar/editar/cargar un gasto,
-  cada una con su color e ícono propios (mismo mapeo en toda la app,
-  incluida la ventanita del Quick Settings Tile).
+- Categorías gestionables desde la app (menú de tres puntos →
+  "Categorías"): crear (con color de una paleta fija), renombrar,
+  desactivar/reactivar y eliminar, sin tocar código ni reinstalar. Desactivar
+  una categoría solo la oculta de los selectores para elegir: los gastos que
+  ya la usan no cambian. Una categoría con gastos (o con candidatos pendientes
+  que la sugieren) no se puede eliminar, solo desactivar; "Otro" siempre queda
+  activa. Las de fábrica conservan su ícono; las propias muestran la inicial.
+  Mismo catálogo en toda la app, incluida la ventanita del Quick Settings Tile.
 - Tab "Actividad": traza de auditoría de todo lo que pasó (detectado →
   aceptado/editado/rechazado/registrado/eliminado), separada de la
   Bandeja (que solo muestra lo pendiente). También paginada.
@@ -86,6 +91,10 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   │   ├── ExpenseFilterSheet.kt
 │   │   ├── ExpenseRow.kt
 │   │   └── ManualAddSheet.kt
+│   ├── catalog/                 Gestión de categorías (crear/renombrar/desactivar/eliminar)
+│   │   ├── CategoriesScreen.kt
+│   │   ├── CategoryColorChoices.kt  Paleta fija para elegir el color
+│   │   └── CategoryMessages.kt      Textos de rechazo, subtítulo e inicial del avatar (puro)
 │   ├── tray/                    Bandeja de candidatos pendientes
 │   │   └── TrayScreen.kt
 │   ├── activitylog/              Traza de auditoría (tab "Actividad")
@@ -98,8 +107,9 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   │   └── UpdateAvailableBanner.kt
 │   ├── common/                    Helpers compartidos entre pantallas (ScreenSupport, etc.)
 │   │   └── ScreenSupport.kt
-│   └── theme/                     Colores, tipografía y estilo por categoría
-│       ├── CategoryStyle.kt
+│   └── theme/                     Colores, tipografía y modelo de UI de categoría
+│       ├── CategoryStyle.kt       Ícono de las categorías de fábrica
+│       ├── CategoryUi.kt          CategoryUi + rememberCategoryOptions/Lookup (leen del catálogo)
 │       ├── Color.kt
 │       ├── Theme.kt
 │       └── Type.kt
@@ -121,15 +131,22 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   ├── UpdateChecker.kt         Consulta la última Release de GitHub, compara versiones
 │   └── ApkInstaller.kt          Descarga (DownloadManager) + instala (FileProvider)
 ├── domain/                   Sin nada de Android - testeable en JVM puro
-│   ├── model/                   Expense, ExpenseCandidate, ActivityEntry, Category
+│   ├── model/                   Expense, ExpenseCandidate, ActivityEntry, Category, CatalogEntry
+│   ├── catalog/                 CatalogDefaults, CategoryPolicy (qué categoría se guarda),
+│   │                             CategoryDisplay (mostrar por id), CatalogUsage (¿en uso?)
+│   ├── notification/            Puerto CandidateNotifier (retirar la notificación al resolver)
 │   ├── repository/              Interfaces (implementadas en data/local)
 │   ├── filter/                  ExpenseFilters (funciones puras de filtrado del Dashboard)
 │   ├── text/                    AmountInput (sanitizado puro del campo Monto)
 │   └── usecase/                 RegisterExpense, CreateCandidate, ConfirmCandidate,
 │                                 EditCandidate, RejectCandidate, EditExpense,
-│                                 DeleteExpense, ExportBackup, Observe*, FindPendingCandidate
+│                                 DeleteExpense, ExportBackup, Observe*, FindPendingCandidate,
+│                                 Create/Rename/SetActive/DeleteCatalogEntry (catálogo)
 ├── data/local/               Implementación con SQLite detrás de las interfaces de domain
-│   ├── DbHelper.kt
+│   ├── DbHelper.kt              Esquema y migraciones SOLO aditivas (nunca DROP)
+│   ├── CatalogSeedV3.kt         Lista congelada que siembra la migración v2→v3
+│   ├── CatalogRows.kt           Mapeo CatalogEntry ↔ fila de catalog_entries
+│   ├── LocalCatalogRepository.kt
 │   ├── LocalExpenseRepository.kt
 │   ├── LocalCandidateRepository.kt
 │   └── LocalActivityRepository.kt

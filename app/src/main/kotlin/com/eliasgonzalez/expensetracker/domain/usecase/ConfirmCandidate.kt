@@ -30,8 +30,14 @@ class ConfirmCandidate(
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
     private val notifier: CandidateNotifier = CandidateNotifier.None,
+    private val awaitReady: suspend () -> Boolean = { true },
 ) {
     suspend operator fun invoke(candidateId: Long): Long? = mutex.withLock {
+        // Sin esperar la carga, en un proceso recien arrancado (ej. tocar "Aceptar" en
+        // una notificacion) la lista esta vacia: el candidato "no existe", se retiraria
+        // la notificacion y la accion se perderia. Si la carga fallo, no se hace nada y
+        // la notificacion queda para reintentar.
+        if (!awaitReady()) return@withLock null
         val candidate = candidates.findById(candidateId)
         if (candidate == null || candidate.status != CandidateStatus.PENDING) {
             // Ya resuelto (o inexistente): igual se retira la notificacion, por si
