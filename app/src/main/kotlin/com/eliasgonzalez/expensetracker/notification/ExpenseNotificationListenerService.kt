@@ -10,6 +10,8 @@ import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import com.eliasgonzalez.expensetracker.R
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
@@ -104,7 +106,11 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
         val editIntent = editActivityPendingIntent(candidate.id)
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID_CANDIDATES)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            // Silueta de la marca (ic_stat_expense), no el icono generico del sistema
+            // (la "i" de android.R.drawable.ic_dialog_info). El color de marca se pinta con
+            // setColor: Android tiñe con el el circulo del icono en la bandeja expandida.
+            .setSmallIcon(R.drawable.ic_stat_expense)
+            .setColor(ContextCompat.getColor(this, R.color.brand_primary))
             .setContentTitle("💳 Gasto detectado")
             .setContentText("${candidate.merchant} — ₲${"%,d".format(candidate.amount)}")
             .setPriority(NotificationCompat.PRIORITY_HIGH)

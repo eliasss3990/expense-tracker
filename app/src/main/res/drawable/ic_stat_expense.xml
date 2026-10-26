@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Icono CHICO de las notificaciones (barra de estado y bandeja). Android
+    usa SOLO la transparencia de este dibujo e ignora sus colores: tiene que ser
+    una silueta de UN color (blanco) sobre fondo transparente, o se ve como un
+    cuadrado blanco. Por eso no sirve el icono de colores del launcher
+    (ic_brand_mark). Es la marca en version monocroma: la MONEDA rellena con el
+    check RECORTADO (en la marca real el check va dibujado encima en indigo) y el
+    punto de acento como pieza aparte, arriba a la derecha (en la marca es ambar).
+    La geometria sale de ic_brand_mark: el check es el mismo, escalado para que
+    quepa dentro de la moneda. El color de marca lo pone setColor() en la
+    notificacion, no este archivo. Un test (NotificationIconResourceTest) vigila
+    que siga siendo de un solo color. -->
+    <!-- Moneda con el check recortado: relleno par-impar, el check queda como hueco. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M2.4,13 a8.6,8.6 0 1,0 17.2,0 a8.6,8.6 0 1,0 -17.2,0 Z M6.42,14.18 L9.66,17.42 L16.96,9.74 L17.21,9.35 L17.29,8.89 L17.19,8.44 L16.92,8.06 L16.53,7.81 L16.07,7.73 L15.62,7.83 L15.24,8.1 L9.62,14.02 L8.1,12.5 L8.36,12.88 L8.45,13.34 L8.36,13.8 L8.1,14.18 L7.72,14.44 L7.26,14.53 L6.8,14.44 Z" />
+    <!-- Punto de acento. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M17,4.8 a2.2,2.2 0 1,0 4.4,0 a2.2,2.2 0 1,0 -4.4,0 Z" />
+</vector>
