@@ -1,7 +1,10 @@
 package com.eliasgonzalez.expensetracker.update
 
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONException
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -12,22 +15,33 @@ private const val LATEST_RELEASE_URL =
 data class ReleaseInfo(val versionName: String, val htmlUrl: String, val apkDownloadUrl: String?)
 
 /**
- * Chequea la última Release publicada en GitHub. Mientras el repo sea
- * privado, la API de Releases pide autenticación y esto va a fallar
- * silenciosamente (devuelve null) - es esperado, no un bug; empieza a
- * funcionar solo con hacer público el repo, sin tocar código.
+ * Chequea la última Release publicada en GitHub. La API de Releases solo
+ * responde sin autenticar si el repo es público, y aun así GitHub limita las
+ * consultas anónimas a 60 por hora por IP (compartida en redes con NAT, como
+ * muchos datos móviles): por eso el resultado distingue POR QUÉ falló en vez
+ * de devolver un null mudo.
  */
 object UpdateChecker {
-    suspend fun fetchLatestRelease(): ReleaseInfo? = withContext(Dispatchers.IO) {
-        runCatching {
+    private const val TAG = "UpdateChecker"
+
+    suspend fun fetchLatestReleaseResult(): UpdateCheckResult = withContext(Dispatchers.IO) {
+        try {
             val connection = URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.setRequestProperty("Accept", "application/vnd.github+json")
             connection.connectTimeout = 5_000
             connection.readTimeout = 5_000
-            connection.inputStream.use { stream ->
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
-                val json = JSONObject(stream.bufferedReader().readText())
+            try {
+                // Se lee el codigo ANTES que el cuerpo: pedir el inputStream de un 403/404
+                // lanza IOException y se perderia el codigo y el header del limite.
+                val code = connection.responseCode
+                if (code != HttpURLConnection.HTTP_OK) {
+                    val remaining = connection.getHeaderField("X-RateLimit-Remaining")
+                    val reason = classifyHttpFailure(code, remaining)
+                    AppLog.w(TAG, "GitHub respondió HTTP $code (cupo restante: ${remaining ?: "?"}) -> $reason")
+                    return@withContext UpdateCheckResult.Failed(reason, "HTTP $code")
+                }
+                val json = JSONObject(connection.inputStream.use { it.bufferedReader().readText() })
                 val assets = json.optJSONArray("assets")
                 val assetNamesToUrls = buildList {
                     if (assets != null) {
@@ -37,14 +51,31 @@ object UpdateChecker {
                         }
                     }
                 }
-                ReleaseInfo(
-                    versionName = json.getString("tag_name").removePrefix("v"),
-                    htmlUrl = json.getString("html_url"),
-                    apkDownloadUrl = findApkAssetUrl(assetNamesToUrls),
+                UpdateCheckResult.Found(
+                    ReleaseInfo(
+                        versionName = json.getString("tag_name").removePrefix("v"),
+                        htmlUrl = json.getString("html_url"),
+                        apkDownloadUrl = findApkAssetUrl(assetNamesToUrls),
+                    )
                 )
+            } finally {
+                connection.disconnect()
             }
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: JSONException) {
+            AppLog.w(TAG, "La respuesta de GitHub no se pudo interpretar", e)
+            UpdateCheckResult.Failed(UpdateFailure.BAD_RESPONSE, e.javaClass.simpleName)
+        } catch (e: Exception) {
+            val reason = classifyException(e)
+            AppLog.w(TAG, "No se pudo consultar la última versión -> $reason", e)
+            UpdateCheckResult.Failed(reason, e.javaClass.simpleName)
+        }
     }
+
+    /** Versión simple: la release, o null si falló por cualquier motivo. */
+    suspend fun fetchLatestRelease(): ReleaseInfo? =
+        (fetchLatestReleaseResult() as? UpdateCheckResult.Found)?.release
 }
 
 /**

@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.notification.isNotificationListenerEnabled
 import com.eliasgonzalez.expensetracker.notification.isPostNotificationsGranted
@@ -65,8 +66,10 @@ import com.eliasgonzalez.expensetracker.ui.onboarding.PermissionsOnboardingScree
 import com.eliasgonzalez.expensetracker.ui.theme.ExpenseTrackerTheme
 import com.eliasgonzalez.expensetracker.ui.tray.TrayScreen
 import com.eliasgonzalez.expensetracker.update.ReleaseInfo
+import com.eliasgonzalez.expensetracker.update.UpdateCheckResult
 import com.eliasgonzalez.expensetracker.update.UpdateChecker
 import com.eliasgonzalez.expensetracker.update.isNewerVersion
+import com.eliasgonzalez.expensetracker.update.userMessage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -136,24 +139,34 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
     val currentVersion = remember {
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        }.getOrNull() ?: "0.0.0"
+        }.onFailure { AppLog.w("MainActivity", "No se pudo leer la versión instalada", it) }
+            .getOrNull() ?: "0.0.0"
     }
     var availableUpdate by remember { mutableStateOf<ReleaseInfo?>(null) }
     var showOverflowMenu by remember { mutableStateOf(false) }
 
     suspend fun checkForUpdate(showUpToDateMessage: Boolean) {
-        val release = UpdateChecker.fetchLatestRelease()
-        when {
-            release == null && showUpToDateMessage ->
-                Toast.makeText(context, "No se pudo comprobar actualizaciones", Toast.LENGTH_SHORT).show()
-            release != null && isNewerVersion(release.versionName, currentVersion) -> {
-                availableUpdate = release
-                if (showUpToDateMessage) {
-                    Toast.makeText(context, "Hay una nueva versión: v${release.versionName}", Toast.LENGTH_SHORT).show()
+        when (val result = UpdateChecker.fetchLatestReleaseResult()) {
+            // El motivo se muestra solo en la busqueda manual; la silenciosa al abrir ya
+            // lo dejo en el log (UpdateChecker) sin molestar con ningun mensaje.
+            is UpdateCheckResult.Failed -> if (showUpToDateMessage) {
+                Toast.makeText(
+                    context,
+                    "No se pudo comprobar actualizaciones: ${result.reason.userMessage()}",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            is UpdateCheckResult.Found -> {
+                val release = result.release
+                if (isNewerVersion(release.versionName, currentVersion)) {
+                    availableUpdate = release
+                    if (showUpToDateMessage) {
+                        Toast.makeText(context, "Hay una nueva versión: v${release.versionName}", Toast.LENGTH_SHORT).show()
+                    }
+                } else if (showUpToDateMessage) {
+                    Toast.makeText(context, "Ya tenés la última versión", Toast.LENGTH_SHORT).show()
                 }
             }
-            showUpToDateMessage ->
-                Toast.makeText(context, "Ya tenés la última versión", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -23,6 +23,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
@@ -112,7 +113,10 @@ private val DARK_PALETTE = OverlayPalette(
  * usar androidx.compose.ui.graphics.Color, así que se parsea acá; un hex
  * inválido cae en el gris de "Otro" en vez de romper el overlay. */
 private fun categoryColor(entry: CatalogEntry): Int =
-    runCatching { Color.parseColor(entry.color) }.getOrDefault(Color.parseColor("#6B7280"))
+    runCatching { Color.parseColor(entry.color) }.getOrElse {
+        AppLog.w("Overlay", "Color de categoría inválido '${entry.color}'", it)
+        Color.parseColor("#6B7280")
+    }
 
 class QuickAddOverlayService : Service() {
 
@@ -196,6 +200,7 @@ class QuickAddOverlayService : Service() {
         val wasEditingDescription = descriptionInput.isFocused
 
         runCatching { windowManager.removeView(rootView) }
+            .onFailure { AppLog.d("Overlay", "removeView falló (la vista ya no estaba)") }
         rootView = buildCardView()
         amountInput.setText(previousAmount)
         merchantInput.setText(previousMerchant)
@@ -222,6 +227,7 @@ class QuickAddOverlayService : Service() {
     override fun onDestroy() {
         scope.cancel()
         runCatching { windowManager.removeView(rootView) }
+            .onFailure { AppLog.d("Overlay", "removeView falló (la vista ya no estaba)") }
         super.onDestroy()
     }
 

@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.notification
 
 import android.app.NotificationManager
 import android.content.Context
+import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 
 /**
@@ -18,7 +19,7 @@ class AndroidCandidateNotifier(context: Context) : CandidateNotifier {
         runCatching {
             val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.cancel(notificationIdFor(candidateId))
-        }
+        }.onFailure { AppLog.w("CandidateNotifier", "No se pudo retirar la notificación del candidato $candidateId", it) }
     }
 
     companion object {
