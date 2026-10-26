@@ -1,16 +1,22 @@
 package com.eliasgonzalez.expensetracker.di
 
 import android.content.Context
+import android.util.Log
 import com.eliasgonzalez.expensetracker.data.local.DbHelper
 import com.eliasgonzalez.expensetracker.data.local.LocalActivityRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalCandidateRepository
+import com.eliasgonzalez.expensetracker.data.local.LocalCatalogRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalExpenseRepository
+import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
 import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
+import com.eliasgonzalez.expensetracker.domain.repository.CatalogRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 import com.eliasgonzalez.expensetracker.domain.usecase.ConfirmCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.CreateCandidate
+import com.eliasgonzalez.expensetracker.domain.usecase.CreateCatalogEntry
+import com.eliasgonzalez.expensetracker.domain.usecase.DeleteCatalogEntry
 import com.eliasgonzalez.expensetracker.domain.usecase.DeleteExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.EditCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.EditExpense
@@ -18,14 +24,18 @@ import com.eliasgonzalez.expensetracker.domain.usecase.ExportBackup
 import com.eliasgonzalez.expensetracker.domain.usecase.FindPendingCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.ObserveActivity
 import com.eliasgonzalez.expensetracker.domain.usecase.ObserveCandidates
+import com.eliasgonzalez.expensetracker.domain.usecase.ObserveCatalog
 import com.eliasgonzalez.expensetracker.domain.usecase.ObserveExpenses
 import com.eliasgonzalez.expensetracker.domain.usecase.RegisterExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.RejectCandidate
+import com.eliasgonzalez.expensetracker.domain.usecase.RenameCatalogEntry
+import com.eliasgonzalez.expensetracker.domain.usecase.SetCatalogEntryActive
 import com.eliasgonzalez.expensetracker.notification.AndroidCandidateNotifier
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 
 /**
@@ -42,6 +52,7 @@ class AppContainer(context: Context) {
     private val localExpenseRepository = LocalExpenseRepository(dbHelper)
     private val localCandidateRepository = LocalCandidateRepository(dbHelper)
     private val localActivityRepository = LocalActivityRepository(dbHelper)
+    private val localCatalogRepository = LocalCatalogRepository(dbHelper)
 
     // Privados a propósito: la UI no debería tener una referencia directa
     // a un repositorio (eso le permitiría leer o mutar salteándose los
@@ -50,6 +61,29 @@ class AppContainer(context: Context) {
     private val expenseRepository: ExpenseRepository = localExpenseRepository
     private val candidateRepository: CandidateRepository = localCandidateRepository
     private val activityRepository: ActivityRepository = localActivityRepository
+    private val catalogRepository: CatalogRepository = localCatalogRepository
+
+    // Cada hydrate va aislado: que uno falle (fila corrupta, DB bloqueada)
+    // ya no cancela a los demas ni deja el catalogo vacio todo el proceso.
+    // Los casos de uso del catalogo esperan este Deferred antes de validar,
+    // porque antes de hidratar las listas en memoria estan vacias.
+    private val hydration = appScope.async {
+        listOf<suspend () -> Unit>(
+            { localExpenseRepository.hydrate() },
+            { localCandidateRepository.hydrate() },
+            { localActivityRepository.hydrate() },
+            { localCatalogRepository.hydrate() },
+        ).forEach { hydrate ->
+            try {
+                hydrate()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("AppContainer", "Fallo al hidratar un repositorio", e)
+            }
+        }
+    }
+    private val awaitHydrated: suspend () -> Unit = { hydration.await() }
 
     // Un solo Mutex por dominio (candidatos, gastos), compartido entre
     // TODOS los casos de uso que escriben sobre ese dominio - no uno por
@@ -60,6 +94,7 @@ class AppContainer(context: Context) {
     // comentario en CreateCandidate.kt.
     private val candidateWriteMutex = Mutex()
     private val expenseWriteMutex = Mutex()
+    private val catalogWriteMutex = Mutex()
 
     private val candidateNotifier: CandidateNotifier = AndroidCandidateNotifier(context.applicationContext)
 
@@ -76,13 +111,14 @@ class AppContainer(context: Context) {
     val observeActivity = ObserveActivity(activityRepository)
     val findPendingCandidate = FindPendingCandidate(candidateRepository)
 
-    init {
-        appScope.launch {
-            localExpenseRepository.hydrate()
-            localCandidateRepository.hydrate()
-            localActivityRepository.hydrate()
-        }
-    }
+    // Catalogo gestionable (PR 1 de 4: todavia sin consumidores en la UI,
+    // el enum Category sigue siendo la fuente hasta el PR 2).
+    private val catalogUsage = ExpenseCatalogUsage(expenseRepository)
+    val observeCatalog = ObserveCatalog(catalogRepository)
+    val createCatalogEntry = CreateCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)
+    val renameCatalogEntry = RenameCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)
+    val setCatalogEntryActive = SetCatalogEntryActive(catalogRepository, catalogWriteMutex, awaitHydrated)
+    val deleteCatalogEntry = DeleteCatalogEntry(catalogRepository, catalogUsage, catalogWriteMutex, awaitHydrated)
 }
 
 object ServiceLocator {
