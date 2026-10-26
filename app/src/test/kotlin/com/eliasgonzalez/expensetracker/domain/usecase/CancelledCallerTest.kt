@@ -10,13 +10,19 @@ import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.fail
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -68,6 +74,8 @@ class CancelledCallerTest {
             delegate.update(candidate)
             caller?.cancel()
         }
+        override suspend fun save(candidate: ExpenseCandidate): Long =
+            delegate.save(candidate).also { caller?.cancel() }
     }
 
     private class CancelAfterExpenseChange(private val delegate: ExpenseRepository) : ExpenseRepository by delegate {
@@ -107,6 +115,7 @@ class CancelledCallerTest {
         val caller = launch { confirm(id) }
         repo.caller = caller
         caller.join()
+        assertTrue("el llamador debia haberse cancelado", caller.isCancelled)
 
         assertEquals(CandidateStatus.ACCEPTED, candidates.findById(id)!!.status)
         assertTrue("falta la entrada 'aceptado' en Actividad", ActivityType.CANDIDATE_ACCEPTED in tipos())
@@ -123,6 +132,7 @@ class CancelledCallerTest {
         val caller = launch { reject(id) }
         repo.caller = caller
         caller.join()
+        assertTrue("el llamador debia haberse cancelado", caller.isCancelled)
 
         assertEquals(CandidateStatus.REJECTED, candidates.findById(id)!!.status)
         assertTrue(ActivityType.CANDIDATE_REJECTED in tipos())
@@ -140,6 +150,7 @@ class CancelledCallerTest {
         val caller = launch { edit(id, 30_000, "Shell Ruta") }
         repo.caller = caller
         caller.join()
+        assertTrue("el llamador debia haberse cancelado", caller.isCancelled)
 
         assertEquals(CandidateStatus.EDITED, candidates.findById(id)!!.status)
         assertTrue(ActivityType.CANDIDATE_EDITED in tipos())
@@ -157,6 +168,7 @@ class CancelledCallerTest {
         val caller = launch { delete(id) }
         repo.caller = caller
         caller.join()
+        assertTrue("el llamador debia haberse cancelado", caller.isCancelled)
 
         assertNull(expenses.findById(id))
         assertTrue("falta la entrada 'eliminado' en Actividad", ActivityType.EXPENSE_DELETED in tipos())
@@ -171,6 +183,7 @@ class CancelledCallerTest {
         val caller = launch { edit(id, 2_000, "Panadería", "OTHER") }
         repo.caller = caller
         caller.join()
+        assertTrue("el llamador debia haberse cancelado", caller.isCancelled)
 
         assertEquals(2_000L, expenses.findById(id)!!.amount)
         assertTrue(ActivityType.EXPENSE_EDITED in tipos())
@@ -184,9 +197,79 @@ class CancelledCallerTest {
         val caller = launch { register(gasto()) }
         repo.caller = caller
         caller.join()
+        assertTrue("el llamador debia haberse cancelado", caller.isCancelled)
 
         assertEquals(1, expenses.expenses.value.size)
         assertTrue(ActivityType.EXPENSE_CREATED in tipos())
+    }
+
+    // --- creacion de candidatos y borrado multiple -----------------------------------
+
+    @Test
+    fun `crear un candidato deja la entrada en Actividad aunque el llamador se cancele`() = runTest {
+        val repo = CancelAfterCandidateUpdate(candidates)
+        val create = CreateCandidate(repo, CancellationAwareActivity(activity), candidateMutex)
+
+        val caller = launch { create(candidate()) }
+        repo.caller = caller
+        caller.join()
+
+        assertTrue(caller.isCancelled)
+        assertEquals(1, candidates.candidates.value.size)
+        assertTrue(ActivityType.CANDIDATE_CREATED in tipos())
+    }
+
+    @Test
+    fun `borrado multiple - cancelar tras el primero no deja el lote a medias`() = runTest {
+        val repo = CancelAfterExpenseChange(expenses)
+        val delete = DeleteExpense(repo, CancellationAwareActivity(activity), expenseMutex)
+        val ids = List(3) { expenses.save(gasto()) }
+
+        val caller = launch { delete.many(ids) }
+        repo.caller = caller
+        caller.join()
+
+        assertTrue(caller.isCancelled)
+        assertTrue("quedaron gastos sin borrar", expenses.expenses.value.isEmpty())
+        assertEquals(3, tipos().count { it == ActivityType.EXPENSE_DELETED })
+    }
+
+    // --- el helper en si -------------------------------------------------------------
+
+    @Test
+    fun `un llamador ya cancelado no ejecuta el bloque aunque el mutex este libre`() = runTest {
+        var ejecutado = false
+        val cancelado = launch {
+            // Cancelado justo antes de entrar, con el mutex libre (la via rapida de lock no lo nota).
+            currentCoroutineContext().job.cancel()
+            candidateMutex.withCommitLock { ejecutado = true }
+        }
+        cancelado.join()
+        assertFalse("no debia ejecutarse para un llamador ya cancelado", ejecutado)
+    }
+
+    @Test
+    fun `cancelado mientras espera el mutex ocupado sale sin ejecutar el bloque`() = runTest {
+        var ejecutado = false
+        candidateMutex.lock()
+        val espera = launch { candidateMutex.withCommitLock { ejecutado = true } }
+        yield()
+        espera.cancelAndJoin()
+        candidateMutex.unlock()
+
+        assertTrue(espera.isCancelled)
+        assertFalse(ejecutado)
+    }
+
+    @Test
+    fun `una excepcion dentro del bloque libera el mutex`() = runTest {
+        try {
+            candidateMutex.withCommitLock { error("falla simulada") }
+            fail("debia propagar la excepcion")
+        } catch (e: IllegalStateException) {
+            // esperado
+        }
+        assertFalse("el mutex quedo tomado", candidateMutex.isLocked)
     }
 
     // --- control: sin cancelacion todo sigue igual -----------------------------------

@@ -36,6 +36,9 @@ private const val DEDUP_WINDOW_MILLIS = 5 * 60 * 1000L
  * uso; no impedía que, por ejemplo, ConfirmCandidate y EditCandidate
  * operaran sobre el mismo candidato al mismo tiempo y duplicaran el
  * Expense - de ahí que las cuatro clases compartan una sola instancia.
+ *
+ * El bloque corre bajo `withCommitLock` (ver CommitLock.kt): no se cancela a mitad, y
+ * `awaitReady` se espera antes de tomar el lock.
  */
 class CreateCandidate(
     private val candidates: CandidateRepository,
@@ -44,28 +47,30 @@ class CreateCandidate(
     private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
     private val awaitReady: suspend () -> Boolean = { true },
 ) {
-    suspend operator fun invoke(original: ExpenseCandidate): Long? = mutex.withCommitLock {
+    suspend operator fun invoke(original: ExpenseCandidate): Long? {
         // Esperar la carga antes de buscar duplicados (con la lista vacia ninguno se
         // detectaria). Si la carga fallo se sigue igual: un duplicado es mejor que
-        // perder un gasto detectado.
+        // perder un gasto detectado. Va FUERA del lock: ver CommitLock.
         awaitReady()
-        if (findDuplicate(original) != null) return@withCommitLock null
+        return mutex.withCommitLock {
+            if (findDuplicate(original) != null) return@withCommitLock null
 
-        // Un parser puede sugerir una categoria que el usuario ya elimino:
-        // se guarda lo que realmente existe, no un id colgado.
-        val candidate = original.copy(
-            categorySuggestion = categoryPolicy.forNewExpense(original.categorySuggestion)
-        )
-        val id = candidates.save(candidate)
-        activity.record(
-            ActivityEntry(
-                type = ActivityType.CANDIDATE_CREATED,
-                candidateId = id,
-                timestamp = candidate.detectedAt,
-                summary = "${candidate.merchant} — ₲${"%,d".format(candidate.amount)}",
+            // Un parser puede sugerir una categoria que el usuario ya elimino:
+            // se guarda lo que realmente existe, no un id colgado.
+            val candidate = original.copy(
+                categorySuggestion = categoryPolicy.forNewExpense(original.categorySuggestion)
             )
-        )
-        id
+            val id = candidates.save(candidate)
+            activity.record(
+                ActivityEntry(
+                    type = ActivityType.CANDIDATE_CREATED,
+                    candidateId = id,
+                    timestamp = candidate.detectedAt,
+                    summary = "${candidate.merchant} — ₲${"%,d".format(candidate.amount)}",
+                )
+            )
+            id
+        }
     }
 
     // Solo compara contra candidatos que sigan PENDING: uno ya

@@ -16,7 +16,11 @@ import kotlinx.coroutines.withContext
  * notificacion al resolver desde la Bandeja.
  *
  * La espera previa (ej. `awaitReady`) va FUERA, para seguir siendo cancelable. Aca solo
- * entra trabajo local y acotado (SQLite).
+ * entra trabajo local y acotado (SQLite): nada que pueda colgarse, porque no se puede cancelar
+ * y retendria el mutex compartido.
+ *
+ * Un llamador que ya llega cancelado no ejecuta el bloque (lo garantiza `Mutex.lock`; el test
+ * de CancelledCallerTest lo fija por si cambia con una version de kotlinx.coroutines).
  */
 internal suspend fun <T> Mutex.withCommitLock(block: suspend () -> T): T =
     withLock { withContext(NonCancellable) { block() } }

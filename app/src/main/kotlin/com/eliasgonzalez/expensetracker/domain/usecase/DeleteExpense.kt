@@ -20,8 +20,14 @@ class DeleteExpense(
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
 ) {
-    suspend operator fun invoke(expenseId: Long): Unit = mutex.withCommitLock {
-        val expense = expenses.findById(expenseId) ?: return@withCommitLock
+    suspend operator fun invoke(expenseId: Long): Unit = mutex.withCommitLock { deleteOne(expenseId) }
+
+    /** El lote entero es una unidad: salir del Dashboard a mitad de un borrado multiple no lo deja a medias. */
+    suspend fun many(expenseIds: Collection<Long>): Unit =
+        mutex.withCommitLock { expenseIds.forEach { deleteOne(it) } }
+
+    private suspend fun deleteOne(expenseId: Long) {
+        val expense = expenses.findById(expenseId) ?: return
         expenses.delete(expenseId)
         activity.record(
             ActivityEntry(
@@ -31,9 +37,5 @@ class DeleteExpense(
                 summary = "${expense.merchant} — ₲${"%,d".format(expense.amount)}",
             )
         )
-    }
-
-    suspend fun many(expenseIds: Collection<Long>) {
-        expenseIds.forEach { invoke(it) }
     }
 }

@@ -22,6 +22,9 @@ import kotlinx.coroutines.sync.Mutex
  * confirmar y editar el mismo candidato desde dos lugares a la vez)
  * leen PENDING antes de que cualquiera alcance a cambiarle el estado, y
  * mas de una termina registrando un Expense para el mismo candidato.
+*
+ * El bloque corre bajo `withCommitLock` (ver CommitLock.kt): no se cancela a mitad, y
+ * `awaitReady` se espera antes de tomar el lock.
  */
 class ConfirmCandidate(
     private val candidates: CandidateRepository,

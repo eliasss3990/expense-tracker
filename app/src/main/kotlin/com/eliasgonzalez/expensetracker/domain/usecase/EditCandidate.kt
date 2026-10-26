@@ -18,6 +18,9 @@ import kotlinx.coroutines.sync.Mutex
  * candidato a la vez desde dos lugares) leen PENDING antes de que
  * cualquiera alcance a cambiarle el estado, y mas de una termina
  * registrando un Expense.
+*
+ * El bloque corre bajo `withCommitLock` (ver CommitLock.kt): no se cancela a mitad, y
+ * `awaitReady` se espera antes de tomar el lock.
  */
 class EditCandidate(
     private val candidates: CandidateRepository,

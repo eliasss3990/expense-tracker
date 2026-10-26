@@ -14,6 +14,9 @@ import kotlinx.coroutines.sync.Mutex
  * en CreateCandidate.kt): sin esto, dos acciones casi simultaneas sobre
  * el mismo candidato leen PENDING antes de que cualquiera alcance a
  * cambiarle el estado.
+*
+ * El bloque corre bajo `withCommitLock` (ver CommitLock.kt): no se cancela a mitad, y
+ * `awaitReady` se espera antes de tomar el lock.
  */
 class RejectCandidate(
     private val candidates: CandidateRepository,
