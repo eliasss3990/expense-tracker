@@ -23,8 +23,8 @@ android {
         applicationId = "com.eliasgonzalez.expensetracker"
         minSdk = 26
         targetSdk = 37
-        versionCode = 9
-        versionName = "0.5.2"
+        versionCode = 10
+        versionName = "0.5.3"
     }
 
     buildFeatures {
@@ -74,4 +74,6 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    // SQLite real en la JVM para probar las migraciones de la base sin emulador (DbMigrationTest).
+    testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
 }

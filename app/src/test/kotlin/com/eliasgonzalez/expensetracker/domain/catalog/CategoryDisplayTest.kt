@@ -53,4 +53,19 @@ class CategoryDisplayTest {
 
         assertEquals("RESTO", catalogo.categoryFor("no-existe").id)
     }
+
+    @Test
+    fun `el resolver precomputado da lo mismo que categoryFor para cualquier id`() {
+        val conInactiva = entries.map { if (it.id == CategoryIds.FUEL) it.copy(active = false) else it }
+        val resolver = conInactiva.categoryResolver()
+
+        listOf(CategoryIds.FOOD, CategoryIds.FUEL, CategoryIds.OTHER, "no-existe", "").forEach { id ->
+            assertEquals(id, conInactiva.categoryFor(id), resolver(id))
+        }
+    }
+
+    @Test
+    fun `el resolver sobre una lista vacia cae en Otro`() {
+        assertEquals(CategoryIds.OTHER, emptyList<CatalogEntry>().categoryResolver()("lo-que-sea").id)
+    }
 }

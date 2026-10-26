@@ -147,7 +147,9 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │                                 DeleteExpense, ExportBackup, Observe*, FindPendingCandidate,
 │                                 Create/Rename/SetActive/DeleteCatalogEntry (catálogo)
 ├── data/local/               Implementación con SQLite detrás de las interfaces de domain
-│   ├── DbHelper.kt              Esquema y migraciones SOLO aditivas (nunca DROP)
+│   ├── DbHelper.kt              Adaptador fino de SQLiteOpenHelper: delega en DbSchema
+│   ├── DbSchema.kt              Esquema y migraciones SOLO aditivas (nunca DROP), en Kotlin puro
+│   ├── AndroidSqlExecutor.kt    SqlExecutor sobre SQLiteDatabase (en los tests: una SQLite real en la JVM)
 │   ├── CatalogSeedV3.kt         Lista congelada que siembra la migración v2→v3
 │   ├── CatalogRows.kt           Mapeo CatalogEntry ↔ fila de catalog_entries
 │   ├── LocalCatalogRepository.kt
@@ -195,7 +197,7 @@ app/src/test/kotlin/com/eliasgonzalez/expensetracker/
 codegen de `@Entity`/`@Dao`, y al momento de armar este proyecto KSP
 todavía no publicaba soporte para Kotlin 2.4.10 (el que usa el Kotlin
 embebido de AGP 9). En vez de bajar la versión de Kotlin del proyecto
-entero por una sola librería, `data/local/DbHelper.kt` implementa la
+entero por una sola librería, `data/local/` (`DbHelper` + `DbSchema`) implementa la
 persistencia a mano detrás de las mismas interfaces de dominio. Migrar a
 Room después no debería tocar nada fuera de `data/local/`.
 

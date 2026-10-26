@@ -6,7 +6,7 @@ import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 
 /**
  * Entradas de fabrica de las categorias: se siembran en una instalacion nueva
- * (DbHelper.onCreate) y son el respaldo de la UI mientras el catalogo todavia
+ * (DbHelper.onCreate, que delega en DbSchema.create) y son el respaldo de la UI mientras el catalogo todavia
  * no cargo. Es una lista literal; los ids vienen de [CategoryIds].
  *
  * "Otro" es protegida (no se desactiva ni elimina) y es el comodin al que cae un

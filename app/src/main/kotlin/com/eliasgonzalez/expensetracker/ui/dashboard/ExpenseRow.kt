@@ -50,7 +50,7 @@ import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.RequiredFieldLabel
 import com.eliasgonzalez.expensetracker.ui.common.relativeDay
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
-import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryLookup
+import com.eliasgonzalez.expensetracker.ui.theme.CategoryUi
 import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
 
@@ -58,19 +58,23 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun ExpenseRow(
     expense: Expense,
+    categoryLookup: (String) -> CategoryUi,
     selectionMode: Boolean,
     selected: Boolean,
     onToggleSelect: () -> Unit,
     onEnterSelection: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val categoryLookup = rememberCategoryLookup()
     var isEditing by rememberSaveable(expense.id) { mutableStateOf(false) }
     var confirmingDelete by rememberSaveable(expense.id) { mutableStateOf(false) }
     var showingDetail by rememberSaveable(expense.id) { mutableStateOf(false) }
 
     if (showingDetail) {
-        ExpenseDetailDialog(expense = expense, onDismiss = { showingDetail = false })
+        ExpenseDetailDialog(
+            expense = expense,
+            category = categoryLookup(expense.categoryId),
+            onDismiss = { showingDetail = false },
+        )
     }
 
     if (confirmingDelete) {
@@ -249,8 +253,7 @@ private fun ExpenseInlineEditForm(
  * fecha y hora exactas, origen y la descripción libre si tiene una).
  */
 @Composable
-private fun ExpenseDetailDialog(expense: Expense, onDismiss: () -> Unit) {
-    val category = rememberCategoryLookup()(expense.categoryId)
+private fun ExpenseDetailDialog(expense: Expense, category: CategoryUi, onDismiss: () -> Unit) {
     val dateFormat = remember {
         java.text.SimpleDateFormat("d 'de' MMMM yyyy, HH:mm", java.util.Locale("es", "PY"))
     }

@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
-import com.eliasgonzalez.expensetracker.domain.catalog.categoryFor
+import com.eliasgonzalez.expensetracker.domain.catalog.categoryResolver
 import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
@@ -83,10 +83,21 @@ fun rememberCategoryOptions(alsoInclude: Set<String> = emptySet()): List<Categor
 /**
  * Resuelve una categoria por id para MOSTRARLA, incluso desactivada: los
  * gastos viejos conservan su nombre y color. Un id desconocido se muestra
- * como "Otro".
+ * como "Otro". Llamarlo UNA vez en el padre y pasar el resultado a las filas
+ * (no una suscripcion al catalogo por fila).
  */
 @Composable
 fun rememberCategoryLookup(): (String) -> CategoryUi {
     val entries = rememberCatalogEntries()
-    return remember(entries) { { id -> entries.categoryFor(id).toCategoryUi() } }
+    return remember(entries) {
+        // Se arma UNA vez por cambio del catalogo (no por fila ni por consulta): un mapa
+        // id -> CategoryUi ya construido, sin volver a parsear colores ni recorrer la lista.
+        val resolve = entries.categoryResolver()
+        val uiById = entries.associate { it.id to it.toCategoryUi() }
+        val fallbackUi = resolve("").let { uiById[it.id] ?: it.toCategoryUi() }
+        // Se asigna a una variable: un `{` en la linea siguiente se leeria como lambda final
+        // de la llamada anterior.
+        val lookup: (String) -> CategoryUi = { id -> uiById[resolve(id).id] ?: fallbackUi }
+        lookup
+    }
 }
