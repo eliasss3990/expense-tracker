@@ -65,7 +65,10 @@ confirmar un gasto sin que el usuario lo revise.
   resto del tiempo — deslizable hacia los costados para descartarlo,
   como una notificación real, con colapso animado.
 - La app chequea sola si hay una versión más nueva publicada en GitHub
-  Releases al abrir (y a demanda desde el menú del Dashboard). Si hay
+  Releases al abrir (y a demanda desde el menú del Dashboard). Consulta
+  primero la **página web** de la última release y deja la API de GitHub de
+  respaldo (la API anónima limita a 60 consultas por hora por IP compartida y
+  se agota sola; la web no cuenta contra ese cupo). Si hay
   una, un banner deslizable ofrece instalarla **directo desde la app**:
   descarga el APK con `DownloadManager` y lanza el instalador del
   sistema (`FileProvider` + `REQUEST_INSTALL_PACKAGES`), sin pasar por
@@ -86,6 +89,7 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 ├── ui/                       Compose - toda la pantalla principal
 │   ├── MainActivity.kt         Shell: navegación inferior, permisos, chequeo de updates
 │   ├── QuickAddActivity.kt     Editar candidato desde la notificación del sistema
+│   ├── EditTarget.kt           Qué hace QuickAddActivity según cómo llegó (puro, probado)
 │   ├── dashboard/               Dashboard: resumen, filtros, lista, alta/edición manual
 │   │   ├── DashboardScreen.kt
 │   │   ├── ExpenseFilterSheet.kt
@@ -130,7 +134,8 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 ├── logging/                  Destinos de log: LogcatSink (único lugar que usa android.util.Log)
 ├── update/                   Chequeo e instalación de nuevas versiones
 │   ├── UpdateChecker.kt         Consulta la última Release de GitHub, compara versiones
-│   ├── UpdateFailure.kt         Por qué falló la consulta (límite de GitHub, sin red, TLS...) y su mensaje
+│   ├── UpdateFailure.kt         Por qué falló la consulta (límite de GitHub, sin red, TLS...)
+│   ├── ReleaseLinks.kt          Versión y enlaces de la release derivados de la etiqueta (puro)
 │   └── ApkInstaller.kt          Descarga (DownloadManager) + instala (FileProvider)
 ├── domain/                   Sin nada de Android - testeable en JVM puro
 │   ├── model/                   Expense, ExpenseCandidate, ActivityEntry, CatalogEntry, CategoryIds
@@ -139,6 +144,7 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   │                             CategoryDisplay (mostrar por id), CatalogUsage (¿en uso?)
 │   ├── log/                     AppLog (fachada de logging) + LogSink (destino). Sin Android
 │   ├── notification/            Puerto CandidateNotifier (retirar la notificación al resolver)
+│   ├── retry/                   retrying(): reintento con backoff lineal (puro)
 │   ├── repository/              Interfaces (implementadas en data/local)
 │   ├── filter/                  ExpenseFilters (funciones puras de filtrado del Dashboard)
 │   ├── text/                    AmountInput (sanitizado puro del campo Monto)
@@ -161,37 +167,24 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 
 El dominio (`domain/`) no importa nada de Android ni de SQLite — solo
 conoce sus propias interfaces de repositorio. Eso es lo que permite tener
-tests unitarios puros en `src/test/` (250+ tests en 25 archivos, corren en
+tests unitarios puros en `src/test/` (unos 420 tests en 44 archivos, corren en
 JVM sin emulador ni Robolectric) para la idempotencia, la deduplicación,
 los parsers, los filtros del Dashboard y el sanitizado de inputs:
 
-```text
-app/src/test/kotlin/com/eliasgonzalez/expensetracker/
-├── domain/
-│   ├── filter/ExpenseFiltersTest.kt
-│   ├── text/AmountInputTest.kt
-│   └── usecase/
-│       ├── FakeRepositories.kt              Fakes en memoria (con soporte de race delay)
-│       ├── CandidateActionsSharedMutexTest.kt
-│       ├── ConfirmCandidateTest.kt / EditCandidateTest.kt / RejectCandidateTest.kt
-│       ├── CreateCandidateTest.kt           Incluye deduplicación
-│       ├── RegisterExpenseTest.kt / EditExpenseTest.kt / DeleteExpenseTest.kt
-│       ├── RepositoryAtomicityTest.kt       Race conditions con delay inyectado
-│       ├── ExportBackupTest.kt
-│       ├── FindPendingCandidateTest.kt
-│       └── Observe{Activity,Candidates,Expenses}Test.kt
-├── notification/
-│   ├── ParserEngineTest.kt          Prioridad entre parsers específicos y genérico
-│   ├── UenoBankParserTest.kt
-│   ├── BancoFamiliarParserTest.kt
-│   └── GenericPurchaseParserTest.kt
-├── ui/
-│   ├── common/ScreenSupportTest.kt
-│   ├── dashboard/DashboardScreenTest.kt
-│   ├── activitylog/ActivityLogScreenTest.kt
-│   └── banners/MissingPermissionsBannerTest.kt
-└── update/UpdateCheckerTest.kt
-```
+Los tests viven en `app/src/test/kotlin/.../` y se organizan por área (se
+describen por carpeta y no archivo por archivo, para que no se desactualice en
+cada PR):
+
+| Carpeta | Qué prueba |
+|---|---|
+| `domain/usecase/` | Casos de uso (candidatos, gastos, catálogo, backup): idempotencia, deduplicación, carreras entre operaciones con retardo inyectado, espera de la carga; fakes en memoria en `FakeRepositories.kt` |
+| `domain/catalog/`, `domain/model/` | Política de categorías, qué se muestra por id, ids persistidos de fábrica y el seed |
+| `domain/log/`, `domain/retry/` | `AppLog` (un destino que lanza no rompe al que loguea) y el reintento con backoff |
+| `domain/filter/`, `domain/text/` | Filtros del Dashboard y sanitizado del campo Monto |
+| `data/local/` | **Migraciones de la base contra una SQLite real** y el seed congelado |
+| `notification/` | Parsers (Ueno, Banco Familiar, genérico), su prioridad en `ParserEngine` y el recurso del ícono de notificación |
+| `update/` | Comparación de versiones, derivación de enlaces de la release y clasificación de fallos del actualizador |
+| `ui/` | Funciones puras de las pantallas (filtros, mensajes, decisión de `QuickAddActivity`); sin tests de las pantallas en sí |
 
 **Por qué SQLite directo y no Room:** Room 2.8.x necesita KSP para el
 codegen de `@Entity`/`@Dao`, y al momento de armar este proyecto KSP
@@ -221,22 +214,34 @@ desde esa fuente, y puede mostrar un aviso de Play Protect por no venir
 de Play Store — es esperable para cualquier app instalada así, se
 resuelve tocando "Analizar app").
 
-Manual, paso a paso:
+Si la búsqueda de actualizaciones falla, el aviso es genérico ("No se pudo
+comprobar actualizaciones") y el motivo queda en el log (ver "Logs").
+Siempre se puede descargar el APK de la
+[última Release](https://github.com/eliasss3990/expense-tracker/releases/latest)
+(la página web no tiene límite de consultas) o instalarlo con
+`adb install -r app-release.apk`. **Instalar siempre el APK de una Release**:
+un APK de debug tiene otra firma y no actualiza sobre el instalado (obligaría a
+desinstalar y perder los datos). `adb install -r` conserva los datos y, si la
+firma no coincide, falla sin tocar nada.
 
-1. Compilar dentro de WSL:
+Manual, paso a paso (requiere el Android SDK local; en una máquina sin SDK el
+build corre solo en el CI):
+
+1. Compilar el APK de debug (requiere JDK 21 y el Android SDK):
    ```bash
-   cd ~/workspaces/expense-tracker
-   JAVA_HOME=/home/eliasgonzalez/.sdkman/candidates/java/current ./gradlew assembleDebug
+   ./gradlew assembleDebug
    ```
-2. Instalar y abrir desde Windows (con el celular conectado por USB):
-   ```
-   adb install -r \\wsl.localhost\Ubuntu\home\eliasgonzalez\workspaces\expense-tracker\app\build\outputs\apk\debug\app-debug.apk
+2. Instalar y abrir con el celular conectado por USB y la depuración USB activada
+   (en Windows con WSL, el USB queda atado al lado Windows: usar el `adb.exe` de
+   Windows):
+   ```bash
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
    adb shell am start -n com.eliasgonzalez.expensetracker/.ui.MainActivity
    ```
-   O usar `/mnt/c/Scripts/expense-tracker-deploy/deploy.bat` (debug) /
-   `deploy-release.bat` (firmado con la misma clave que las Releases
-   reales, para evitar el error de "no se pudo actualizar" por firmas
-   distintas si ya hay una build debug instalada).
+   **Ojo con la firma:** un APK de debug tiene otra firma que el de una Release, así
+   que **no actualiza sobre una instalación hecha con una Release** (el sistema lo
+   rechaza; la salida sería desinstalar y perder los datos). Para actualizar una
+   instalación real, usar el APK de la Release con `adb install -r`.
 3. Al abrir por primera vez, un onboarding pide juntos los permisos de
    notificaciones (Android 13+) y el **acceso a notificaciones**
    (`NotificationListenerService`, que Android no deja pedir con un
@@ -248,17 +253,56 @@ Manual, paso a paso:
    otras apps" (necesario para la ventanita flotante), la tile lleva
    directo a esa pantalla de Ajustes.
 
+## Logs
+
+La app registra con `AppLog` (`domain/log/`), una fachada con niveles
+`d/i/w/e`. El destino lo define un `LogSink`: hoy `LogcatSink`
+(`logging/`), el único archivo que usa `android.util.Log`. Cambiar el destino
+(un archivo, por ejemplo) es escribir otro `LogSink` y cambiar una línea en
+`ExpenseTrackerApp`.
+
+```bash
+adb logcat -s UpdateChecker AppContainer CandidateNotifier MainActivity
+```
+
+Solo se registran fallos y eventos raros, con su causa (tipo de error, código de
+respuesta, ids). **Nunca** montos, comercios ni textos de notificaciones: son
+datos financieros del usuario. logcat es un búfer en memoria y se pierde al
+reiniciar el celular.
+
+## Cómo se publica una versión
+
+1. Rama de trabajo → PR a `next` (corre el CI: lint, tests y build del APK).
+2. PR `next` → `main` (solo valida que la rama de origen sea `next`).
+3. Al mergear a `main`, `release.yml` compila el APK **firmado** y publica la
+   Release `v<versionName>`.
+
+**Bumpear `versionName` y `versionCode` en `app/build.gradle.kts` es obligatorio**
+al llevar algo a `main`: sin bump, el release se republica sobre el tag existente
+y la app no detecta ninguna actualización. Un PR que queda desactualizado se
+pone al día con `gh pr update-branch` (sin force-push). El caché del SDK de
+Android se siembra en cada push a `next` (`warm-sdk-cache.yml`).
+
 ## Cómo correr los tests
 
 ```bash
-cd ~/workspaces/expense-tracker
-JAVA_HOME=/home/eliasgonzalez/.sdkman/candidates/java/current ./gradlew testDebugUnitTest
+./gradlew testDebugUnitTest
 ```
+
+(Requiere JDK 21 y el Android SDK; sin SDK, el CI corre los mismos tests en cada PR.)
 
 Son tests puros de JVM (sin Robolectric ni emulador) sobre los casos de
 uso de dominio y sobre funciones puras de la UI (filtros, sanitizado de
 inputs), con fakes en memoria de los repositorios
 (`src/test/kotlin/.../domain/usecase/FakeRepositories.kt`).
+
+Las **migraciones de la base** (`data/local/DbSchema.kt`) se prueban contra una
+SQLite real en memoria (`sqlite-jdbc`, solo de test), con los esquemas
+históricos v1 y v2 como fixture y la regla de que ninguna migración puede
+ejecutar `DROP`, `DELETE`, `TRUNCATE`, `REPLACE`, `UPDATE` ni `RENAME`. **Al
+escribir un test nuevo, comprobar que corre y que falla cuando se rompe lo que
+prueba** (por ejemplo reintroduciendo el bug): un "verde" sin que el test se
+ejecute no demuestra nada.
 
 ## Cómo probar la detección
 
@@ -273,7 +317,7 @@ propósito). Formas rápidas de generarla:
   ya confiable (ej. Gmail).
 - Usar `adb shell "cmd notification post -t '<título>' <tag> '<texto>'"`
   (con comillas simples adentro, para que sobrevivan el viaje por varios
-  shells si se corre desde WSL vía el `adb.exe` de Windows) — esto posta
+  shells, por ejemplo WSL → `adb.exe` de Windows) — esto posta
   la notificación como si viniera del propio shell/`android`, así que
   solo sirve si ese paquete está en la lista blanca, o para probar el
   camino de rechazo de paquetes no confiables.
@@ -291,4 +335,6 @@ de Ueno Bank y Banco Familiar/Eko (el parser genérico cubre el resto de
 forma más básica, sin distinguir de qué fuente viene el comercio),
 merchant aliases/aprendizaje de usuario, presupuestos, voz, OCR, ni
 sincronización con ningún proveedor externo (Google Drive, etc.) — la app
-es 100% local. El export a JSON es la única vía de backup por ahora.
+es 100% local. El export a JSON es la única vía de backup por ahora (no hay
+importación), no hay un destino de logs a archivo, y las pantallas y
+`DbHelper`/repositorios locales no tienen tests automáticos (necesitan Android).
