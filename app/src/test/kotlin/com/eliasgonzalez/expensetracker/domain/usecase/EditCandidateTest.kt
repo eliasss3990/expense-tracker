@@ -67,6 +67,8 @@ class EditCandidateTest {
         assertEquals(90_000, expense.amount)
         assertEquals("McDonald's - Shopping", expense.merchant)
         assertEquals(CandidateStatus.EDITED, candidates.findById(candidateId)?.status)
+        assertEquals("el candidato conserva lo detectado", 85_000L, candidates.findById(candidateId)?.amount)
+        assertEquals("MCDONALDS", candidates.findById(candidateId)?.merchant)
     }
 
     @Test
@@ -167,7 +169,8 @@ class EditCandidateTest {
         editCandidate(candidateId, amount = -1_000L, merchant = "Reembolso")
 
         assertEquals(-1_000L, expenses.expenses.value.first().amount)
-        assertEquals(-1_000L, candidates.findById(candidateId)?.amount)
+        // El candidato conserva lo DETECTADO (base del dedup); lo editado vive en el gasto.
+        assertEquals(85_000L, candidates.findById(candidateId)?.amount)
     }
 
     @Test
@@ -199,7 +202,7 @@ class EditCandidateTest {
         editCandidate(candidateId, amount = 1_000L, merchant = "")
 
         assertEquals("", expenses.expenses.value.first().merchant)
-        assertEquals("", candidates.findById(candidateId)?.merchant)
+        assertEquals("MCDONALDS", candidates.findById(candidateId)?.merchant) // lo detectado, no lo editado
     }
 
     @Test
