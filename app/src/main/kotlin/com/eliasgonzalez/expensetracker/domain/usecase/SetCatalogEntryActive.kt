@@ -11,11 +11,11 @@ import kotlinx.coroutines.sync.withLock
 class SetCatalogEntryActive(
     private val catalog: CatalogRepository,
     private val mutex: Mutex = Mutex(),
-    private val awaitReady: suspend () -> Unit = {},
+    private val awaitReady: suspend () -> Boolean = { true },
 ) {
     suspend operator fun invoke(kind: String, id: String, active: Boolean): CatalogOutcome =
         mutex.withLock {
-            awaitReady()
+            if (!awaitReady()) return@withLock CatalogOutcome.Rejected(CatalogRejection.NOT_READY)
             val entry = catalog.find(kind, id)
                 ?: return@withLock CatalogOutcome.Rejected(CatalogRejection.NOT_FOUND)
             if (!active && entry.protected) {

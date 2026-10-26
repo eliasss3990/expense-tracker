@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
+import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.Expense
@@ -15,14 +16,21 @@ import kotlinx.coroutines.sync.withLock
  *
  * Comparte un Mutex con EditExpense/DeleteExpense (inyectado desde
  * AppContainer) - ver el comentario en DeleteExpense.kt para el motivo.
+ *
+ * La categoria pasa por CategoryPolicy: una desactivada SE RESPETA (desactivar
+ * solo la oculta de los selectores); unicamente un id que no existe en el
+ * catalogo cae en "Otro". Como ConfirmCandidate y EditCandidate registran
+ * por aca, esa regla cubre tambien a los candidatos.
  */
 class RegisterExpense(
     private val expenses: ExpenseRepository,
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
+    private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
 ) {
     suspend operator fun invoke(expense: Expense): Long = mutex.withLock {
-        val id = expenses.save(expense)
+        val toSave = expense.copy(categoryId = categoryPolicy.forNewExpense(expense.categoryId))
+        val id = expenses.save(toSave)
         activity.record(
             ActivityEntry(
                 type = ActivityType.EXPENSE_CREATED,

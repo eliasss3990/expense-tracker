@@ -7,6 +7,8 @@ import com.eliasgonzalez.expensetracker.data.local.LocalActivityRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalCandidateRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalCatalogRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalExpenseRepository
+import com.eliasgonzalez.expensetracker.domain.catalog.CatalogCategoryPolicy
+import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
 import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
@@ -68,6 +70,7 @@ class AppContainer(context: Context) {
     // Los casos de uso del catalogo esperan este Deferred antes de validar,
     // porque antes de hidratar las listas en memoria estan vacias.
     private val hydration = appScope.async {
+        var allLoaded = true
         listOf<suspend () -> Unit>(
             { localExpenseRepository.hydrate() },
             { localCandidateRepository.hydrate() },
@@ -79,11 +82,18 @@ class AppContainer(context: Context) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                allLoaded = false
                 Log.e("AppContainer", "Fallo al hidratar un repositorio", e)
             }
         }
+        allLoaded
     }
-    private val awaitHydrated: suspend () -> Unit = { hydration.await() }
+
+    // true solo si TODOS los repositorios cargaron: los casos de uso del
+    // catalogo se niegan a operar (NOT_READY) si no, porque con listas
+    // vacias "en uso" daria false para datos reales.
+    private val awaitHydrated: suspend () -> Boolean = { hydration.await() }
+    private val categoryPolicy: CategoryPolicy = CatalogCategoryPolicy(catalogRepository) { awaitHydrated() }
 
     // Un solo Mutex por dominio (candidatos, gastos), compartido entre
     // TODOS los casos de uso que escriben sobre ese dominio - no uno por
@@ -98,12 +108,12 @@ class AppContainer(context: Context) {
 
     private val candidateNotifier: CandidateNotifier = AndroidCandidateNotifier(context.applicationContext)
 
-    val registerExpense = RegisterExpense(expenseRepository, activityRepository, expenseWriteMutex)
-    val createCandidate = CreateCandidate(candidateRepository, activityRepository, candidateWriteMutex)
+    val registerExpense = RegisterExpense(expenseRepository, activityRepository, expenseWriteMutex, categoryPolicy)
+    val createCandidate = CreateCandidate(candidateRepository, activityRepository, candidateWriteMutex, categoryPolicy)
     val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier)
-    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier)
+    val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier, categoryPolicy)
     val rejectCandidate = RejectCandidate(candidateRepository, activityRepository, candidateWriteMutex, candidateNotifier)
-    val editExpense = EditExpense(expenseRepository, activityRepository, expenseWriteMutex)
+    val editExpense = EditExpense(expenseRepository, activityRepository, expenseWriteMutex, categoryPolicy)
     val deleteExpense = DeleteExpense(expenseRepository, activityRepository, expenseWriteMutex)
     val exportBackup = ExportBackup(expenseRepository, candidateRepository, activityRepository)
     val observeExpenses = ObserveExpenses(expenseRepository)
@@ -113,12 +123,16 @@ class AppContainer(context: Context) {
 
     // Catalogo gestionable (PR 1 de 4: todavia sin consumidores en la UI,
     // el enum Category sigue siendo la fuente hasta el PR 2).
-    private val catalogUsage = ExpenseCatalogUsage(expenseRepository)
+    private val catalogUsage = ExpenseCatalogUsage(expenseRepository, candidateRepository)
     val observeCatalog = ObserveCatalog(catalogRepository)
     val createCatalogEntry = CreateCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)
     val renameCatalogEntry = RenameCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)
     val setCatalogEntryActive = SetCatalogEntryActive(catalogRepository, catalogWriteMutex, awaitHydrated)
-    val deleteCatalogEntry = DeleteCatalogEntry(catalogRepository, catalogUsage, catalogWriteMutex, awaitHydrated)
+    val deleteCatalogEntry = DeleteCatalogEntry(
+        catalogRepository, catalogUsage, catalogWriteMutex, awaitHydrated,
+        // Orden de locks: catalogo, candidatos, gastos (ver DeleteCatalogEntry).
+        alsoLock = listOf(candidateWriteMutex, expenseWriteMutex),
+    )
 }
 
 object ServiceLocator {

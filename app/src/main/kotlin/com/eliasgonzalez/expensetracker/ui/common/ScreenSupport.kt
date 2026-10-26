@@ -31,9 +31,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.eliasgonzalez.expensetracker.domain.model.Category
-import com.eliasgonzalez.expensetracker.ui.theme.brandColor
-import com.eliasgonzalez.expensetracker.ui.theme.icon
+import androidx.compose.ui.unit.sp
+import com.eliasgonzalez.expensetracker.ui.theme.CategoryUi
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -61,7 +60,7 @@ internal fun relativeDay(epochMillis: Long): String {
 }
 
 @Composable
-internal fun CategoryAvatar(category: Category, size: Dp = 44.dp) {
+internal fun CategoryAvatar(category: CategoryUi, size: Dp = 44.dp) {
     Box(
         Modifier
             .size(size)
@@ -69,12 +68,23 @@ internal fun CategoryAvatar(category: Category, size: Dp = 44.dp) {
             .background(category.brandColor().copy(alpha = 0.15f)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            category.icon(),
-            contentDescription = category.label,
-            tint = category.brandColor(),
-            modifier = Modifier.size(size * 0.5f),
-        )
+        val icon = category.icon
+        if (icon != null) {
+            Icon(
+                icon,
+                contentDescription = category.label,
+                tint = category.brandColor(),
+                modifier = Modifier.size(size * 0.5f),
+            )
+        } else {
+            // Categoria creada por el usuario: sin ícono propio, va la inicial.
+            Text(
+                category.label.take(1).uppercase(),
+                color = category.brandColor(),
+                fontWeight = FontWeight.Bold,
+                fontSize = (size.value * 0.4f).sp,
+            )
+        }
     }
 }
 

@@ -3,10 +3,12 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogUsage
 import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
+import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
 import com.eliasgonzalez.expensetracker.domain.model.Category
 import com.eliasgonzalez.expensetracker.domain.model.Expense
+import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -26,12 +28,13 @@ class CatalogUseCasesTest {
     private val kind = CatalogKind.CATEGORY
     private val catalog = FakeCatalogRepository(CatalogDefaults.categories)
     private val expenses = FakeExpenseRepository()
+    private val candidates = FakeCandidateRepository()
     private val mutex = Mutex()
     private var seq = 0
     private val create = CreateCatalogEntry(catalog, mutex) { "nuevo-${++seq}" }
     private val rename = RenameCatalogEntry(catalog, mutex)
     private val setActive = SetCatalogEntryActive(catalog, mutex)
-    private val delete = DeleteCatalogEntry(catalog, ExpenseCatalogUsage(expenses), mutex)
+    private val delete = DeleteCatalogEntry(catalog, ExpenseCatalogUsage(expenses, candidates), mutex)
     private val observe = ObserveCatalog(catalog)
 
     private fun rejected(o: CatalogOutcome) = (o as CatalogOutcome.Rejected).reason
@@ -234,7 +237,7 @@ class CatalogUseCasesTest {
     fun `ExpenseCatalogUsage solo conoce categorias - otros tipos nunca estan en uso`() = runTest {
         gastoCon("medio-1")
 
-        assertTrue(!ExpenseCatalogUsage(expenses).isInUse("payment_method", "medio-1"))
+        assertTrue(!ExpenseCatalogUsage(expenses, candidates).isInUse("payment_method", "medio-1"))
     }
 
     // --- observar ------------------------------------------------------
@@ -270,8 +273,8 @@ class CatalogUseCasesTest {
     fun `las operaciones de escritura esperan a que el catalogo este hidratado`() = runTest {
         val listo = CompletableDeferred<Unit>()
         val vacio = FakeCatalogRepository()
-        val createEsperando = CreateCatalogEntry(vacio, Mutex(), { listo.await() }) { "id-1" }
-        val deleteEsperando = DeleteCatalogEntry(vacio, { _, _ -> false }, Mutex(), { listo.await() })
+        val createEsperando = CreateCatalogEntry(vacio, Mutex(), { listo.await(); true }) { "id-1" }
+        val deleteEsperando = DeleteCatalogEntry(vacio, { _, _ -> false }, Mutex(), { listo.await(); true })
 
         val alta = async { createEsperando(kind, "Mascotas", "#AA00FF") }
         val baja = async { deleteEsperando(kind, "id-1") }
@@ -288,8 +291,8 @@ class CatalogUseCasesTest {
     fun `renombrar y desactivar tambien esperan a la hidratacion`() = runTest {
         val listo = CompletableDeferred<Unit>()
         val repo = FakeCatalogRepository(CatalogDefaults.categories)
-        val renameEsperando = RenameCatalogEntry(repo, Mutex()) { listo.await() }
-        val activeEsperando = SetCatalogEntryActive(repo, Mutex()) { listo.await() }
+        val renameEsperando = RenameCatalogEntry(repo, Mutex()) { listo.await(); true }
+        val activeEsperando = SetCatalogEntryActive(repo, Mutex()) { listo.await(); true }
 
         val a = async { renameEsperando(kind, Category.FOOD.id, "Restaurantes") }
         val b = async { activeEsperando(kind, Category.FUEL.id, false) }
@@ -301,5 +304,63 @@ class CatalogUseCasesTest {
         listo.complete(Unit)
         a.await(); b.await()
         assertEquals("Restaurantes", repo.find(kind, Category.FOOD.id)?.label)
+    }
+
+    // --- candidatos pendientes: desactivar no cambia nada, borrar se bloquea ---
+
+    private suspend fun candidato(categoryId: String, status: CandidateStatus) = candidates.save(
+        ExpenseCandidate(
+            amount = 1_000, merchant = "x", occurredAt = 1, detectedAt = 1,
+            sourceType = ExpenseSource.NOTIFICATION, categorySuggestion = categoryId, status = status,
+        )
+    )
+
+    @Test
+    fun `no elimina una categoria que un candidato pendiente sugiere - solo se puede desactivar`() = runTest {
+        candidato(Category.FUEL.id, CandidateStatus.PENDING)
+
+        assertEquals(CatalogRejection.IN_USE, rejected(delete(kind, Category.FUEL.id)))
+    }
+
+    @Test
+    fun `un candidato ya resuelto no impide eliminar la categoria`() = runTest {
+        val creada = created(create(kind, "Mascotas", "#AA00FF"))
+        candidato(creada.id, CandidateStatus.REJECTED)
+        candidato(creada.id, CandidateStatus.ACCEPTED)
+
+        assertTrue(delete(kind, creada.id) is CatalogOutcome.Success)
+    }
+
+    @Test
+    fun `desactivar una categoria no cambia la categoria de gastos ni de candidatos pendientes`() = runTest {
+        gastoCon(Category.FUEL.id)
+        val candidatoId = candidato(Category.FUEL.id, CandidateStatus.PENDING)
+
+        setActive(kind, Category.FUEL.id, false)
+
+        assertEquals(Category.FUEL.id, expenses.expenses.value.single().categoryId)
+        assertEquals(Category.FUEL.id, candidates.findById(candidatoId)!!.categorySuggestion)
+    }
+
+    // --- snapshot (lo usa el overlay, que no puede suscribirse a un Flow) ----
+
+    @Test
+    fun `snapshot devuelve lo mismo que el flujo - por tipo, ordenado y filtrando las inactivas`() = runTest {
+        setActive(kind, Category.HEALTH.id, false)
+        catalog.save(CatalogEntry("payment_method", "m1", "Efectivo", "#112233"))
+
+        val soloActivas = observe.snapshot(kind)
+        val todas = observe.snapshot(kind, onlyActive = false)
+
+        assertEquals(observe(kind).first(), soloActivas)
+        assertTrue(soloActivas.none { it.id == Category.HEALTH.id })
+        assertTrue(todas.any { it.id == Category.HEALTH.id })
+        assertTrue(todas.none { it.kind != kind })
+        assertEquals(todas.sortedBy { it.sortOrder }, todas)
+    }
+
+    @Test
+    fun `snapshot de un catalogo todavia sin cargar viene vacio (el llamador decide el respaldo)`() = runTest {
+        assertTrue(ObserveCatalog(FakeCatalogRepository()).snapshot(kind).isEmpty())
     }
 }

@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
+import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
@@ -25,6 +26,7 @@ class EditCandidate(
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
     private val notifier: CandidateNotifier = CandidateNotifier.None,
+    private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
 ) {
     suspend operator fun invoke(
         candidateId: Long,
@@ -42,7 +44,11 @@ class EditCandidate(
         }
 
         val now = System.currentTimeMillis()
-        val finalCategoryId = categoryId.ifBlank { candidate.categorySuggestion }
+        // Se resuelve ANTES de guardar el candidato para que quede igual que
+        // el gasto que se registra (RegisterExpense aplica la misma politica).
+        val finalCategoryId = categoryPolicy.forNewExpense(
+            categoryId.ifBlank { candidate.categorySuggestion }
+        )
         val expenseId = registerExpense(
             Expense(
                 amount = amount,

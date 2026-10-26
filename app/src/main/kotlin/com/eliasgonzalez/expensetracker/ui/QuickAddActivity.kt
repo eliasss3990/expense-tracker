@@ -41,7 +41,7 @@ import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.ui.theme.ExpenseTrackerTheme
-import com.eliasgonzalez.expensetracker.ui.theme.brandColor
+import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
 
 const val EXTRA_EDIT_CANDIDATE_ID = "edit_candidate_id"
@@ -78,9 +78,9 @@ private fun QuickAddScreen(
     var amountText by remember { mutableStateOf(editing?.amount?.toString().orEmpty()) }
     var merchantText by remember { mutableStateOf(editing?.merchant.orEmpty()) }
     var descriptionText by remember { mutableStateOf(editing?.description.orEmpty()) }
-    var category by remember {
-        mutableStateOf(Category.fromId(editing?.categorySuggestion ?: Category.OTHER.id))
-    }
+    var categoryId by remember { mutableStateOf(editing?.categorySuggestion ?: Category.OTHER.id) }
+    // Activas + la sugerida del candidato que se edita aunque este desactivada.
+    val categoryOptions = rememberCategoryOptions(alsoInclude = setOfNotNull(editing?.categorySuggestion))
     val scope = rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
@@ -129,12 +129,12 @@ private fun QuickAddScreen(
                     Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Category.entries.forEach { option ->
-                        val selected = option == category
+                    categoryOptions.forEach { option ->
+                        val selected = option.id == categoryId
                         FilterChip(
                             selected = selected,
-                            onClick = { category = option },
-                            label = { Text(option.label) },
+                            onClick = { categoryId = option.id },
+                            label = { Text(option.chipLabel()) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = option.brandColor().copy(alpha = 0.18f),
                                 selectedLabelColor = option.brandColor(),
@@ -160,7 +160,7 @@ private fun QuickAddScreen(
                                         editing.id,
                                         amount,
                                         merchantText,
-                                        category.id,
+                                        categoryId,
                                         descriptionText.trim(),
                                     )
                                 } else {
@@ -169,7 +169,7 @@ private fun QuickAddScreen(
                                         Expense(
                                             amount = amount,
                                             merchant = merchantText,
-                                            categoryId = category.id,
+                                            categoryId = categoryId,
                                             description = descriptionText.trim(),
                                             occurredAt = now,
                                             createdAt = now,

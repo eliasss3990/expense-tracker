@@ -10,6 +10,9 @@ enum class CatalogRejection {
     NOT_FOUND,
     PROTECTED,
     IN_USE,
+
+    /** La base no termino de cargar bien (un hydrate fallo): no es seguro validar. */
+    NOT_READY,
 }
 
 /** Resultado de una operacion de catalogo: la UI decide el mensaje. */

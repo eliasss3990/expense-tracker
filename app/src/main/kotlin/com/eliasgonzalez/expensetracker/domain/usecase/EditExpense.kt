@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.domain.usecase
 
+import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
@@ -19,6 +20,7 @@ class EditExpense(
     private val expenses: ExpenseRepository,
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
+    private val categoryPolicy: CategoryPolicy = CategoryPolicy.None,
 ) {
     suspend operator fun invoke(
         expenseId: Long,
@@ -32,7 +34,7 @@ class EditExpense(
             expense.copy(
                 amount = amount,
                 merchant = merchant,
-                categoryId = categoryId,
+                categoryId = categoryPolicy.forEditedExpense(categoryId, expense.categoryId),
                 description = description ?: expense.description,
             )
         )
