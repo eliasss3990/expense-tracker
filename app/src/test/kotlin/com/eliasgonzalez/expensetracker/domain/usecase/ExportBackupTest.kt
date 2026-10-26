@@ -87,6 +87,55 @@ class ExportBackupTest {
         assertTrue("el backup no puede referenciar una categoria que no describe", categoryId in catalogIds)
     }
 
+
+    @Test
+    fun `el backup declara los ids de categoria referenciados que el catalogo ya no describe`() = runTest {
+        val expenses = FakeExpenseRepository()
+        val candidates = FakeCandidateRepository()
+        val catalog = FakeCatalogRepository()
+        catalog.save(CatalogEntry("category", "FOOD", "Comida", "#F59E0B", sortOrder = 0, builtIn = true))
+        expenses.save(Expense(amount = 1, merchant = "a", categoryId = "FOOD", occurredAt = 1L, createdAt = 1L, source = ExpenseSource.MANUAL))
+        expenses.save(Expense(amount = 2, merchant = "b", categoryId = "BORRADA-1", occurredAt = 1L, createdAt = 1L, source = ExpenseSource.MANUAL))
+        candidates.save(
+            ExpenseCandidate(
+                amount = 3, merchant = "c", occurredAt = 1L, detectedAt = 1L, sourceType = ExpenseSource.NOTIFICATION,
+                categorySuggestion = "BORRADA-2", status = CandidateStatus.ACCEPTED,
+            )
+        )
+        val export = ExportBackup(expenses, candidates, FakeActivityRepository(), catalog)
+
+        val root = MiniJson.parse(export()) as Map<*, *>
+
+        // Los dos ids sin descripcion quedan declarados (el de un gasto y el de un candidato ya resuelto).
+        assertEquals(listOf("BORRADA-1", "BORRADA-2"), root["unknownCategoryIds"])
+    }
+
+    @Test
+    fun `sin referencias colgadas la lista de ids desconocidos esta vacia y es JSON valido`() = runTest {
+        val expenses = FakeExpenseRepository()
+        val catalog = FakeCatalogRepository()
+        catalog.save(CatalogEntry("category", "FOOD", "Comida", "#F59E0B", sortOrder = 0, builtIn = true))
+        expenses.save(Expense(amount = 1, merchant = "a", categoryId = "FOOD", occurredAt = 1L, createdAt = 1L, source = ExpenseSource.MANUAL))
+        val export = ExportBackup(expenses, FakeCandidateRepository(), FakeActivityRepository(), catalog)
+
+        val root = MiniJson.parse(export()) as Map<*, *>
+
+        assertTrue((root["unknownCategoryIds"] as List<*>).isEmpty())
+    }
+
+    @Test
+    fun `un id repetido en varios gastos se declara una sola vez`() = runTest {
+        val expenses = FakeExpenseRepository()
+        repeat(3) {
+            expenses.save(Expense(amount = 1, merchant = "x", categoryId = "BORRADA", occurredAt = 1L, createdAt = 1L, source = ExpenseSource.MANUAL))
+        }
+        val export = ExportBackup(expenses, FakeCandidateRepository(), FakeActivityRepository(), FakeCatalogRepository())
+
+        val root = MiniJson.parse(export()) as Map<*, *>
+
+        assertEquals(listOf("BORRADA"), root["unknownCategoryIds"])
+    }
+
     @Test
     fun `merchant con comillas dobles sin escapar produce JSON valido y recupera el valor original`() = runTest {
         val expenses = FakeExpenseRepository()

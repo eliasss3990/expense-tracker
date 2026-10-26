@@ -10,6 +10,7 @@ import com.eliasgonzalez.expensetracker.domain.catalog.CatalogCategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
 import com.eliasgonzalez.expensetracker.domain.log.AppLog
+import com.eliasgonzalez.expensetracker.domain.retry.retrying
 import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
@@ -33,7 +34,6 @@ import com.eliasgonzalez.expensetracker.domain.usecase.RejectCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.RenameCatalogEntry
 import com.eliasgonzalez.expensetracker.domain.usecase.SetCatalogEntryActive
 import com.eliasgonzalez.expensetracker.notification.AndroidCandidateNotifier
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,6 +46,9 @@ import kotlinx.coroutines.sync.Mutex
  * introducir un framework de DI - se puede migrar a Hilt mas adelante si
  * el grafo crece lo suficiente como para justificarlo.
  */
+private const val HYDRATE_ATTEMPTS = 3
+private const val HYDRATE_RETRY_DELAY_MS = 500L
+
 class AppContainer(context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -66,25 +69,28 @@ class AppContainer(context: Context) {
     private val catalogRepository: CatalogRepository = localCatalogRepository
 
     // Cada hydrate va aislado: que uno falle (fila corrupta, DB bloqueada)
-    // ya no cancela a los demas ni deja el catalogo vacio todo el proceso.
-    // Los casos de uso del catalogo esperan este Deferred antes de validar,
-    // porque antes de hidratar las listas en memoria estan vacias.
+    // ya no cancela a los demas ni deja el catalogo vacio todo el proceso, y
+    // se REINTENTA unas veces (un bloqueo momentaneo de la base es transitorio:
+    // sin reintento la app quedaba con listas vacias hasta que el sistema
+    // matara el proceso). Los casos de uso esperan este Deferred antes de
+    // operar, porque antes de hidratar las listas en memoria estan vacias.
     private val hydration = appScope.async {
         var allLoaded = true
-        listOf<suspend () -> Unit>(
-            { localExpenseRepository.hydrate() },
-            { localCandidateRepository.hydrate() },
-            { localActivityRepository.hydrate() },
-            { localCatalogRepository.hydrate() },
-        ).forEach { hydrate ->
-            try {
-                hydrate()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                allLoaded = false
-                AppLog.e("AppContainer", "Fallo al hidratar un repositorio", e)
-            }
+        listOf<Pair<String, suspend () -> Unit>>(
+            "gastos" to { localExpenseRepository.hydrate() },
+            "candidatos" to { localCandidateRepository.hydrate() },
+            "actividad" to { localActivityRepository.hydrate() },
+            "catalogo" to { localCatalogRepository.hydrate() },
+        ).forEach { (name, hydrate) ->
+            val loaded = retrying(
+                attempts = HYDRATE_ATTEMPTS,
+                delayMillis = HYDRATE_RETRY_DELAY_MS,
+                onFailure = { attempt, error ->
+                    AppLog.e("AppContainer", "Fallo al hidratar $name (intento $attempt de $HYDRATE_ATTEMPTS)", error)
+                },
+                block = hydrate,
+            )
+            if (!loaded) allLoaded = false
         }
         allLoaded
     }

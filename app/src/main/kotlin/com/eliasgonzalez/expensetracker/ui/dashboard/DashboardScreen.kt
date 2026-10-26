@@ -92,9 +92,11 @@ internal fun DashboardScreen() {
     }
     val categoryLookup = rememberCategoryLookup()
     val byCategory = remember(thisMonth, categoryLookup) {
-        thisMonth.groupBy { categoryLookup(it.categoryId) }
-            .mapValues { (_, list) -> list.sumOf { it.amount } }
-            .toList()
+        // Se agrupa por el ID resuelto (un texto corto) y no por el objeto de categoria:
+        // hashear el icono (un arbol de vectores) por cada gasto del mes era trabajo de mas.
+        // Resolver antes de agrupar mantiene que los ids desconocidos se sumen en "Otro".
+        thisMonth.groupBy { categoryLookup(it.categoryId).id }
+            .map { (id, list) -> categoryLookup(id) to list.sumOf { it.amount } }
             .sortedByDescending { it.second }
     }
 
@@ -216,6 +218,7 @@ internal fun DashboardScreen() {
         items(filteredExpenses.take(visibleCount), key = { it.id }) { expense ->
             ExpenseRow(
                 expense = expense,
+                categoryLookup = categoryLookup,
                 selectionMode = selectionMode,
                 selected = expense.id in selectedIds,
                 onToggleSelect = {
