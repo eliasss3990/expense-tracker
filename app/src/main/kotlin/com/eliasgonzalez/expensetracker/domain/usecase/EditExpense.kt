@@ -6,7 +6,6 @@ import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Comparte un Mutex con RegisterExpense/DeleteExpense (inyectado desde
@@ -28,8 +27,8 @@ class EditExpense(
         merchant: String,
         categoryId: String,
         description: String? = null,
-    ): Unit = mutex.withLock {
-        val expense = expenses.findById(expenseId) ?: return@withLock
+    ): Unit = mutex.withCommitLock {
+        val expense = expenses.findById(expenseId) ?: return@withCommitLock
         expenses.update(
             expense.copy(
                 amount = amount,
