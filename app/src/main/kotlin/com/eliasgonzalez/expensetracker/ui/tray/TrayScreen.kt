@@ -55,6 +55,7 @@ import com.eliasgonzalez.expensetracker.ui.common.CategoryAvatar
 import com.eliasgonzalez.expensetracker.ui.common.EXPENSES_PAGE_SIZE
 import com.eliasgonzalez.expensetracker.ui.common.EmptyState
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
+import com.eliasgonzalez.expensetracker.ui.theme.CategoryUi
 import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryLookup
 import com.eliasgonzalez.expensetracker.ui.theme.rememberCategoryOptions
 import kotlinx.coroutines.launch
@@ -64,6 +65,8 @@ internal fun TrayScreen() {
     val candidates by ServiceLocator.get().observeCandidates().collectAsState()
     val pending = remember(candidates) { candidates.filter { it.status == CandidateStatus.PENDING } }
     var visibleCount by remember { mutableStateOf(EXPENSES_PAGE_SIZE) }
+    // Una sola resolucion de categorias para toda la lista (antes, una por tarjeta).
+    val categoryLookup = rememberCategoryLookup()
 
     if (pending.isEmpty()) {
         EmptyState(
@@ -85,7 +88,7 @@ internal fun TrayScreen() {
                 style = MaterialTheme.typography.titleMedium,
             )
         }
-        items(pending.take(visibleCount), key = { it.id }) { candidate -> PendingCard(candidate) }
+        items(pending.take(visibleCount), key = { it.id }) { candidate -> PendingCard(candidate, categoryLookup) }
 
         if (visibleCount < pending.size) {
             item {
@@ -99,7 +102,7 @@ internal fun TrayScreen() {
 }
 
 @Composable
-private fun PendingCard(candidate: ExpenseCandidate) {
+private fun PendingCard(candidate: ExpenseCandidate, categoryLookup: (String) -> CategoryUi) {
     val scope = rememberCoroutineScope()
     var isEditing by rememberSaveable(candidate.id) { mutableStateOf(false) }
 
@@ -123,6 +126,7 @@ private fun PendingCard(candidate: ExpenseCandidate) {
             } else {
                 PendingCardSummary(
                     candidate = candidate,
+                    categoryLookup = categoryLookup,
                     onAccept = { scope.launch { ServiceLocator.get().confirmCandidate(candidate.id) } },
                     onEdit = { isEditing = true },
                     onReject = { scope.launch { ServiceLocator.get().rejectCandidate(candidate.id) } },
@@ -135,11 +139,12 @@ private fun PendingCard(candidate: ExpenseCandidate) {
 @Composable
 private fun PendingCardSummary(
     candidate: ExpenseCandidate,
+    categoryLookup: (String) -> CategoryUi,
     onAccept: () -> Unit,
     onEdit: () -> Unit,
     onReject: () -> Unit,
 ) {
-    val category = rememberCategoryLookup()(candidate.categorySuggestion)
+    val category = categoryLookup(candidate.categorySuggestion)
     Row(verticalAlignment = Alignment.CenterVertically) {
         CategoryAvatar(category)
         Spacer(Modifier.width(12.dp))

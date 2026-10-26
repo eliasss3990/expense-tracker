@@ -13,3 +13,15 @@ fun List<CatalogEntry>.categoryFor(id: String): CatalogEntry =
     firstOrNull { it.id == id }
         ?: firstOrNull { it.protected }
         ?: CatalogDefaults.categories.first { it.protected }
+
+/**
+ * Version precomputada de [categoryFor] para resolver MUCHOS ids contra la
+ * misma lista (ej. una fila por gasto): arma un mapa una vez en vez de
+ * recorrer la lista en cada consulta. Misma semantica: un id desconocido cae
+ * en la entrada protegida.
+ */
+fun List<CatalogEntry>.categoryResolver(): (String) -> CatalogEntry {
+    val byId = associateBy { it.id }
+    val fallback = categoryFor("")
+    return { id -> byId[id] ?: fallback }
+}
