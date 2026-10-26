@@ -6,7 +6,7 @@ import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -104,17 +104,17 @@ class CatalogRaceAndReadinessTest {
 
         val id = create(candidato("categoria-que-ya-no-existe"))!!
 
-        assertEquals(Category.OTHER.id, candidates.findById(id)!!.categorySuggestion)
+        assertEquals(CategoryIds.OTHER, candidates.findById(id)!!.categorySuggestion)
     }
 
     @Test
     fun `un parser que sugiere una categoria DESACTIVADA conserva la sugerencia`() = runTest {
-        catalog.save(catalog.find(kind, Category.FUEL.id)!!.copy(active = false))
+        catalog.save(catalog.find(kind, CategoryIds.FUEL)!!.copy(active = false))
         val create = CreateCandidate(candidates, activity, candidateMutex, CatalogCategoryPolicy(catalog))
 
-        val id = create(candidato(Category.FUEL.id))!!
+        val id = create(candidato(CategoryIds.FUEL))!!
 
-        assertEquals(Category.FUEL.id, candidates.findById(id)!!.categorySuggestion)
+        assertEquals(CategoryIds.FUEL, candidates.findById(id)!!.categorySuggestion)
     }
 
     @Test
@@ -123,12 +123,12 @@ class CatalogRaceAndReadinessTest {
         val policy = CatalogCategoryPolicy(catalog)
         val register = RegisterExpense(expenses, activity, expenseMutex, policy)
         val editCandidate = EditCandidate(candidates, register, activity, candidateMutex, categoryPolicy = policy)
-        val id = candidates.save(candidato(Category.FOOD.id))
+        val id = candidates.save(candidato(CategoryIds.FOOD))
 
         val expenseId = editCandidate(id, 6_000, "Shell", "id-inexistente")!!
 
-        assertEquals(Category.OTHER.id, expenses.findById(expenseId)!!.categoryId)
-        assertEquals(Category.OTHER.id, candidates.findById(id)!!.categorySuggestion)
+        assertEquals(CategoryIds.OTHER, expenses.findById(expenseId)!!.categoryId)
+        assertEquals(CategoryIds.OTHER, candidates.findById(id)!!.categorySuggestion)
     }
 
     // --- NOT_READY -----------------------------------------------------

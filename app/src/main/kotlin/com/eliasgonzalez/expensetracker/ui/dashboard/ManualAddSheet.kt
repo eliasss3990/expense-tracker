@@ -26,7 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.ui.common.RequiredFieldLabel
@@ -47,7 +47,7 @@ internal fun ManualAddSheet(onDismiss: () -> Unit) {
     var amountText by remember { mutableStateOf("") }
     var merchantText by remember { mutableStateOf("") }
     var descriptionText by remember { mutableStateOf("") }
-    var categoryId by remember { mutableStateOf(Category.OTHER.id) }
+    var categoryId by remember { mutableStateOf(CategoryIds.OTHER) }
     val categoryOptions = rememberCategoryOptions()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {

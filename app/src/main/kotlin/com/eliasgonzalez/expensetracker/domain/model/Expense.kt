@@ -12,7 +12,7 @@ data class Expense(
     val amount: Long,
     val currency: String = "PYG",
     val merchant: String,
-    val categoryId: String = Category.OTHER.id,
+    val categoryId: String = CategoryIds.OTHER,
     val description: String = "",
     val occurredAt: Long,
     val createdAt: Long,

@@ -183,7 +183,7 @@ class EditExpenseTest {
     }
 
     @Test
-    fun `permite editar categoryId a un valor invalido sin validar contra el enum Category`() = runTest {
+    fun `permite editar categoryId a un valor invalido sin validar contra el catalogo`() = runTest {
         val expenses = FakeExpenseRepository()
         val activity = FakeActivityRepository()
         val editExpense = EditExpense(expenses, activity)

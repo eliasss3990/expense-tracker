@@ -1,25 +1,34 @@
 package com.eliasgonzalez.expensetracker.domain.catalog
 
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Antirregresion del seed: hasta que la UI migre al catalogo, el enum
- * `Category` es la fuente de verdad. Si alguien agrega una categoria al
- * enum y se olvida del seed (o al reves), estos tests fallan en vez de
- * dejar una categoria "fantasma" que existe en un lado y no en el otro.
+ * Las categorias de fabrica son una lista literal (CatalogDefaults) y sus ids
+ * viven en CategoryIds. Si alguien agrega un id a una y se olvida de la otra,
+ * estos tests fallan en vez de dejar una categoria que existe en un lado solo.
  */
 class CatalogDefaultsTest {
 
     private val seeded = CatalogDefaults.categories
 
     @Test
-    fun `hay una entrada sembrada por cada categoria del enum, con el mismo id y nombre`() {
-        assertEquals(Category.entries.map { it.id }, seeded.map { it.id })
-        assertEquals(Category.entries.map { it.label }, seeded.map { it.label })
+    fun `hay una entrada sembrada por cada id de fabrica, en el mismo orden`() {
+        assertEquals(CategoryIds.builtIn, seeded.map { it.id })
+    }
+
+    @Test
+    fun `los nombres de fabrica son los que ve el usuario`() {
+        assertEquals(
+            listOf(
+                "Comida", "Combustible", "Supermercado", "Entretenimiento", "Suscripciones",
+                "Transporte", "Compras", "Salud", "Educación", "Mecánico", "Otro",
+            ),
+            seeded.map { it.label },
+        )
     }
 
     @Test
@@ -29,7 +38,7 @@ class CatalogDefaultsTest {
 
     @Test
     fun `solo Otro esta protegida`() {
-        assertEquals(listOf(Category.OTHER.id), seeded.filter { it.protected }.map { it.id })
+        assertEquals(listOf(CategoryIds.OTHER), seeded.filter { it.protected }.map { it.id })
     }
 
     @Test

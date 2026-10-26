@@ -1,7 +1,6 @@
 package com.eliasgonzalez.expensetracker.domain.catalog
 
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
-import com.eliasgonzalez.expensetracker.domain.model.Category
 
 /**
  * Entrada con la que MOSTRAR una categoria por id. Incluye las
@@ -12,5 +11,5 @@ import com.eliasgonzalez.expensetracker.domain.model.Category
  */
 fun List<CatalogEntry>.categoryFor(id: String): CatalogEntry =
     firstOrNull { it.id == id }
-        ?: firstOrNull { it.id == Category.OTHER.id }
-        ?: CatalogDefaults.categories.first { it.id == Category.OTHER.id }
+        ?: firstOrNull { it.protected }
+        ?: CatalogDefaults.categories.first { it.protected }

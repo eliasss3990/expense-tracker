@@ -6,7 +6,7 @@ import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -123,50 +123,50 @@ class CatalogUseCasesTest {
 
     @Test
     fun `renombrar cambia el nombre y conserva el id`() = runTest {
-        val outcome = rename(kind, Category.FOOD.id, "Restaurantes")
+        val outcome = rename(kind, CategoryIds.FOOD, "Restaurantes")
 
         assertEquals("Restaurantes", created(outcome).label)
-        assertEquals(Category.FOOD.id, created(outcome).id)
-        assertEquals("Restaurantes", catalog.find(kind, Category.FOOD.id)?.label)
+        assertEquals(CategoryIds.FOOD, created(outcome).id)
+        assertEquals("Restaurantes", catalog.find(kind, CategoryIds.FOOD)?.label)
     }
 
     @Test
     fun `renombrar no afecta a los gastos que ya usan esa categoria`() = runTest {
-        gastoCon(Category.FOOD.id)
+        gastoCon(CategoryIds.FOOD)
 
-        rename(kind, Category.FOOD.id, "Restaurantes")
+        rename(kind, CategoryIds.FOOD, "Restaurantes")
 
-        assertEquals(Category.FOOD.id, expenses.expenses.value.single().categoryId)
+        assertEquals(CategoryIds.FOOD, expenses.expenses.value.single().categoryId)
     }
 
     @Test
     fun `renombrar rechaza inexistente, nombre invalido y nombre de otra entrada`() = runTest {
         assertEquals(CatalogRejection.NOT_FOUND, rejected(rename(kind, "no-existe", "X")))
-        assertEquals(CatalogRejection.INVALID_LABEL, rejected(rename(kind, Category.FOOD.id, " ")))
-        assertEquals(CatalogRejection.DUPLICATE_LABEL, rejected(rename(kind, Category.FOOD.id, "combustible")))
+        assertEquals(CatalogRejection.INVALID_LABEL, rejected(rename(kind, CategoryIds.FOOD, " ")))
+        assertEquals(CatalogRejection.DUPLICATE_LABEL, rejected(rename(kind, CategoryIds.FOOD, "combustible")))
     }
 
     @Test
     fun `renombrar a su propio nombre cambiando mayusculas es valido`() = runTest {
-        assertEquals("COMIDA", created(rename(kind, Category.FOOD.id, "COMIDA")).label)
+        assertEquals("COMIDA", created(rename(kind, CategoryIds.FOOD, "COMIDA")).label)
     }
 
     // --- desactivar / reactivar ----------------------------------------
 
     @Test
     fun `desactivar saca la entrada de los selectores y reactivar la devuelve`() = runTest {
-        setActive(kind, Category.FUEL.id, false)
-        assertTrue(observe(kind).first().none { it.id == Category.FUEL.id })
+        setActive(kind, CategoryIds.FUEL, false)
+        assertTrue(observe(kind).first().none { it.id == CategoryIds.FUEL })
 
-        setActive(kind, Category.FUEL.id, true)
-        assertTrue(observe(kind).first().any { it.id == Category.FUEL.id })
+        setActive(kind, CategoryIds.FUEL, true)
+        assertTrue(observe(kind).first().any { it.id == CategoryIds.FUEL })
     }
 
     @Test
     fun `la protegida no se puede desactivar pero reactivarla siempre se permite`() = runTest {
-        assertEquals(CatalogRejection.PROTECTED, rejected(setActive(kind, Category.OTHER.id, false)))
-        assertTrue(catalog.find(kind, Category.OTHER.id)!!.active)
-        assertTrue(setActive(kind, Category.OTHER.id, true) is CatalogOutcome.Success)
+        assertEquals(CatalogRejection.PROTECTED, rejected(setActive(kind, CategoryIds.OTHER, false)))
+        assertTrue(catalog.find(kind, CategoryIds.OTHER)!!.active)
+        assertTrue(setActive(kind, CategoryIds.OTHER, true) is CatalogOutcome.Success)
     }
 
     @Test
@@ -176,12 +176,12 @@ class CatalogUseCasesTest {
 
     @Test
     fun `desactivar una categoria con gastos no toca los gastos`() = runTest {
-        gastoCon(Category.FUEL.id)
+        gastoCon(CategoryIds.FUEL)
 
-        setActive(kind, Category.FUEL.id, false)
+        setActive(kind, CategoryIds.FUEL, false)
 
-        assertEquals(Category.FUEL.id, expenses.expenses.value.single().categoryId)
-        assertEquals("Combustible", catalog.find(kind, Category.FUEL.id)?.label)
+        assertEquals(CategoryIds.FUEL, expenses.expenses.value.single().categoryId)
+        assertEquals("Combustible", catalog.find(kind, CategoryIds.FUEL)?.label)
     }
 
     // --- eliminar ------------------------------------------------------
@@ -196,31 +196,31 @@ class CatalogUseCasesTest {
 
     @Test
     fun `no elimina una categoria con gastos - solo se puede desactivar`() = runTest {
-        gastoCon(Category.FOOD.id)
+        gastoCon(CategoryIds.FOOD)
 
-        assertEquals(CatalogRejection.IN_USE, rejected(delete(kind, Category.FOOD.id)))
-        assertEquals("Comida", catalog.find(kind, Category.FOOD.id)?.label)
+        assertEquals(CatalogRejection.IN_USE, rejected(delete(kind, CategoryIds.FOOD)))
+        assertEquals("Comida", catalog.find(kind, CategoryIds.FOOD)?.label)
     }
 
     @Test
     fun `desactivada con gastos sigue sin poder eliminarse`() = runTest {
-        gastoCon(Category.FOOD.id)
-        setActive(kind, Category.FOOD.id, false)
+        gastoCon(CategoryIds.FOOD)
+        setActive(kind, CategoryIds.FOOD, false)
 
-        assertEquals(CatalogRejection.IN_USE, rejected(delete(kind, Category.FOOD.id)))
+        assertEquals(CatalogRejection.IN_USE, rejected(delete(kind, CategoryIds.FOOD)))
     }
 
     @Test
     fun `una vez borrados sus gastos, la categoria si se puede eliminar`() = runTest {
-        gastoCon(Category.EDUCATION.id)
+        gastoCon(CategoryIds.EDUCATION)
         expenses.delete(expenses.expenses.value.single().id)
 
-        assertTrue(delete(kind, Category.EDUCATION.id) is CatalogOutcome.Success)
+        assertTrue(delete(kind, CategoryIds.EDUCATION) is CatalogOutcome.Success)
     }
 
     @Test
     fun `no elimina la protegida ni una inexistente`() = runTest {
-        assertEquals(CatalogRejection.PROTECTED, rejected(delete(kind, Category.OTHER.id)))
+        assertEquals(CatalogRejection.PROTECTED, rejected(delete(kind, CategoryIds.OTHER)))
         assertEquals(CatalogRejection.NOT_FOUND, rejected(delete(kind, "no-existe")))
     }
 
@@ -255,10 +255,10 @@ class CatalogUseCasesTest {
 
     @Test
     fun `observar con onlyActive=false incluye las desactivadas (para filtros y listados)`() = runTest {
-        setActive(kind, Category.HEALTH.id, false)
+        setActive(kind, CategoryIds.HEALTH, false)
 
-        assertTrue(observe(kind, onlyActive = true).first().none { it.id == Category.HEALTH.id })
-        assertTrue(observe(kind, onlyActive = false).first().any { it.id == Category.HEALTH.id })
+        assertTrue(observe(kind, onlyActive = true).first().none { it.id == CategoryIds.HEALTH })
+        assertTrue(observe(kind, onlyActive = false).first().any { it.id == CategoryIds.HEALTH })
     }
 
     // --- antirregresion de los hallazgos del code-review ----------------
@@ -294,16 +294,16 @@ class CatalogUseCasesTest {
         val renameEsperando = RenameCatalogEntry(repo, Mutex()) { listo.await(); true }
         val activeEsperando = SetCatalogEntryActive(repo, Mutex()) { listo.await(); true }
 
-        val a = async { renameEsperando(kind, Category.FOOD.id, "Restaurantes") }
-        val b = async { activeEsperando(kind, Category.FUEL.id, false) }
+        val a = async { renameEsperando(kind, CategoryIds.FOOD, "Restaurantes") }
+        val b = async { activeEsperando(kind, CategoryIds.FUEL, false) }
         runCurrent()
 
         assertTrue(!a.isCompleted && !b.isCompleted)
-        assertEquals("Comida", repo.find(kind, Category.FOOD.id)?.label)
+        assertEquals("Comida", repo.find(kind, CategoryIds.FOOD)?.label)
 
         listo.complete(Unit)
         a.await(); b.await()
-        assertEquals("Restaurantes", repo.find(kind, Category.FOOD.id)?.label)
+        assertEquals("Restaurantes", repo.find(kind, CategoryIds.FOOD)?.label)
     }
 
     // --- candidatos pendientes: desactivar no cambia nada, borrar se bloquea ---
@@ -317,9 +317,9 @@ class CatalogUseCasesTest {
 
     @Test
     fun `no elimina una categoria que un candidato pendiente sugiere - solo se puede desactivar`() = runTest {
-        candidato(Category.FUEL.id, CandidateStatus.PENDING)
+        candidato(CategoryIds.FUEL, CandidateStatus.PENDING)
 
-        assertEquals(CatalogRejection.IN_USE, rejected(delete(kind, Category.FUEL.id)))
+        assertEquals(CatalogRejection.IN_USE, rejected(delete(kind, CategoryIds.FUEL)))
     }
 
     @Test
@@ -333,28 +333,28 @@ class CatalogUseCasesTest {
 
     @Test
     fun `desactivar una categoria no cambia la categoria de gastos ni de candidatos pendientes`() = runTest {
-        gastoCon(Category.FUEL.id)
-        val candidatoId = candidato(Category.FUEL.id, CandidateStatus.PENDING)
+        gastoCon(CategoryIds.FUEL)
+        val candidatoId = candidato(CategoryIds.FUEL, CandidateStatus.PENDING)
 
-        setActive(kind, Category.FUEL.id, false)
+        setActive(kind, CategoryIds.FUEL, false)
 
-        assertEquals(Category.FUEL.id, expenses.expenses.value.single().categoryId)
-        assertEquals(Category.FUEL.id, candidates.findById(candidatoId)!!.categorySuggestion)
+        assertEquals(CategoryIds.FUEL, expenses.expenses.value.single().categoryId)
+        assertEquals(CategoryIds.FUEL, candidates.findById(candidatoId)!!.categorySuggestion)
     }
 
     // --- snapshot (lo usa el overlay, que no puede suscribirse a un Flow) ----
 
     @Test
     fun `snapshot devuelve lo mismo que el flujo - por tipo, ordenado y filtrando las inactivas`() = runTest {
-        setActive(kind, Category.HEALTH.id, false)
+        setActive(kind, CategoryIds.HEALTH, false)
         catalog.save(CatalogEntry("payment_method", "m1", "Efectivo", "#112233"))
 
         val soloActivas = observe.snapshot(kind)
         val todas = observe.snapshot(kind, onlyActive = false)
 
         assertEquals(observe(kind).first(), soloActivas)
-        assertTrue(soloActivas.none { it.id == Category.HEALTH.id })
-        assertTrue(todas.any { it.id == Category.HEALTH.id })
+        assertTrue(soloActivas.none { it.id == CategoryIds.HEALTH })
+        assertTrue(todas.any { it.id == CategoryIds.HEALTH })
         assertTrue(todas.none { it.kind != kind })
         assertEquals(todas.sortedBy { it.sortOrder }, todas)
     }
@@ -388,7 +388,7 @@ class CatalogUseCasesTest {
             alsoLock = listOf(candidateMutex, expenseMutex),
         )
 
-        val resultado = async { deleteEsperando(kind, Category.EDUCATION.id) }
+        val resultado = async { deleteEsperando(kind, CategoryIds.EDUCATION) }
         runCurrent()
 
         // Mientras espera la carga no debe tener bloqueadas las altas de gastos/candidatos.

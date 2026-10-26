@@ -165,7 +165,7 @@ class RegisterExpenseTest {
             )
         )
 
-        // El caso de uso no valida contra el enum Category: persiste el
+        // Sin politica inyectada el caso de uso no valida la categoria: persiste el
         // valor crudo tal cual, sin crashear ni caer a OTHER.
         assertEquals("CATEGORIA_QUE_NO_EXISTE", expenses.findById(id)?.categoryId)
     }
