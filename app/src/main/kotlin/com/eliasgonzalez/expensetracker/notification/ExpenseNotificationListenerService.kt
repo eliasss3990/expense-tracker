@@ -109,7 +109,7 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
             .build()
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(candidate.id.toInt(), notification)
+        manager.notify(AndroidCandidateNotifier.notificationIdFor(candidate.id), notification)
     }
 
     private fun actionPendingIntent(action: String, candidateId: Long): PendingIntent {

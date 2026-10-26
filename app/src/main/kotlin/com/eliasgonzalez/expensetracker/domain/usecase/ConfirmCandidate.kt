@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
+import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
@@ -28,6 +29,7 @@ class ConfirmCandidate(
     private val registerExpense: RegisterExpense,
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
+    private val notifier: CandidateNotifier = CandidateNotifier.None,
 ) {
     suspend operator fun invoke(candidateId: Long): Long? = mutex.withLock {
         val candidate = candidates.findById(candidateId) ?: return@withLock null
@@ -57,6 +59,7 @@ class ConfirmCandidate(
                 summary = "${candidate.merchant} — ₲${"%,d".format(candidate.amount)}",
             )
         )
+        notifier.dismiss(candidateId)
         expenseId
     }
 }

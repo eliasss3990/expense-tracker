@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 import com.eliasgonzalez.expensetracker.domain.model.ActivityEntry
 import com.eliasgonzalez.expensetracker.domain.model.ActivityType
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
+import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
@@ -23,6 +24,7 @@ class EditCandidate(
     private val registerExpense: RegisterExpense,
     private val activity: ActivityRepository,
     private val mutex: Mutex = Mutex(),
+    private val notifier: CandidateNotifier = CandidateNotifier.None,
 ) {
     suspend operator fun invoke(
         candidateId: Long,
@@ -67,6 +69,7 @@ class EditCandidate(
                 summary = "$merchant — ₲${"%,d".format(amount)}",
             )
         )
+        notifier.dismiss(candidateId)
         return expenseId
     }
 }
