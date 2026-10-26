@@ -29,7 +29,11 @@ confirmar un gasto sin que el usuario lo revise.
   de confirmación para la misma operación, como hace Banco Familiar). El
   chequeo está protegido con un `Mutex` compartido entre todos los casos
   de uso que tocan candidatos/gastos, para que operaciones casi
-  simultáneas no se cuelen como duplicados ni pisen datos entre sí.
+  simultáneas no se cuelen como duplicados ni pisen datos entre sí. Esos
+  casos de uso corren además en una sección **no cancelable**: aceptar,
+  rechazar o editar desde la Bandeja no se corta a mitad aunque la tarjeta
+  salga de la pantalla (así siempre se retira la notificación y queda la
+  entrada en Actividad).
 - El candidato dispara una notificación propia con **Aceptar / Editar /
   Rechazar**. Aceptar y Rechazar son idempotentes: repetir la acción
   sobre un candidato ya resuelto no hace nada.
@@ -172,7 +176,7 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 
 El dominio (`domain/`) no importa nada de Android ni de SQLite — solo
 conoce sus propias interfaces de repositorio. Eso es lo que permite tener
-tests unitarios puros en `src/test/` (unos 420 tests en 44 archivos, corren en
+tests unitarios puros en `src/test/` (unos 440 tests en 44 archivos, corren en
 JVM sin emulador ni Robolectric) para la idempotencia, la deduplicación,
 los parsers, los filtros del Dashboard y el sanitizado de inputs:
 
@@ -182,7 +186,7 @@ cada PR):
 
 | Carpeta | Qué prueba |
 |---|---|
-| `domain/usecase/` | Casos de uso (candidatos, gastos, catálogo, backup): idempotencia, deduplicación, carreras entre operaciones con retardo inyectado, espera de la carga; fakes en memoria en `FakeRepositories.kt` |
+| `domain/usecase/` | Casos de uso (candidatos, gastos, catálogo, backup): idempotencia, deduplicación, carreras entre operaciones con retardo inyectado, espera de la carga, casos de uso que no se cortan si el llamador se cancela; fakes en memoria en `FakeRepositories.kt` |
 | `domain/catalog/`, `domain/model/` | Política de categorías, qué se muestra por id, ids persistidos de fábrica y el seed |
 | `domain/log/`, `domain/retry/` | `AppLog` (un destino que lanza no rompe al que loguea) y el reintento con backoff |
 | `domain/filter/`, `domain/text/` | Filtros del Dashboard y sanitizado del campo Monto |
