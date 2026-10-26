@@ -36,7 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
 import com.eliasgonzalez.expensetracker.domain.text.sanitizeAmountInput
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -78,7 +78,7 @@ private fun QuickAddScreen(
     var amountText by remember { mutableStateOf(editing?.amount?.toString().orEmpty()) }
     var merchantText by remember { mutableStateOf(editing?.merchant.orEmpty()) }
     var descriptionText by remember { mutableStateOf(editing?.description.orEmpty()) }
-    var categoryId by remember { mutableStateOf(editing?.categorySuggestion ?: Category.OTHER.id) }
+    var categoryId by remember { mutableStateOf(editing?.categorySuggestion ?: CategoryIds.OTHER) }
     // Activas + la sugerida del candidato que se edita aunque este desactivada.
     val categoryOptions = rememberCategoryOptions(alsoInclude = setOfNotNull(editing?.categorySuggestion))
     val scope = rememberCoroutineScope()

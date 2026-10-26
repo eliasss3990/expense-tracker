@@ -3,7 +3,7 @@ package com.eliasgonzalez.expensetracker.domain.usecase
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogCategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
@@ -50,61 +50,61 @@ class ExpenseCategoryPolicyTest {
 
     @Test
     fun `registrar con una categoria activa la conserva`() = runTest {
-        assertEquals(Category.FOOD.id, categoriaGuardada(register(gasto(Category.FOOD.id))))
+        assertEquals(CategoryIds.FOOD, categoriaGuardada(register(gasto(CategoryIds.FOOD))))
     }
 
     @Test
     fun `registrar con una categoria desactivada la conserva`() = runTest {
-        desactivar(Category.FUEL.id)
+        desactivar(CategoryIds.FUEL)
 
-        assertEquals(Category.FUEL.id, categoriaGuardada(register(gasto(Category.FUEL.id))))
+        assertEquals(CategoryIds.FUEL, categoriaGuardada(register(gasto(CategoryIds.FUEL))))
     }
 
     @Test
     fun `registrar con una categoria inexistente guarda Otro (carrera borrar vs gasto nuevo)`() = runTest {
-        assertEquals(Category.OTHER.id, categoriaGuardada(register(gasto("ya-borrada"))))
+        assertEquals(CategoryIds.OTHER, categoriaGuardada(register(gasto("ya-borrada"))))
     }
 
     @Test
     fun `confirmar un candidato pendiente cuya categoria se desactivo conserva esa categoria`() = runTest {
         val confirm = ConfirmCandidate(candidates, register, activity, candidateMutex)
-        val id = candidates.save(candidato(Category.FUEL.id))
-        desactivar(Category.FUEL.id)
+        val id = candidates.save(candidato(CategoryIds.FUEL))
+        desactivar(CategoryIds.FUEL)
 
         val expenseId = confirm(id)!!
 
-        assertEquals(Category.FUEL.id, categoriaGuardada(expenseId))
+        assertEquals(CategoryIds.FUEL, categoriaGuardada(expenseId))
     }
 
     @Test
     fun `editar un candidato sin tocar su categoria desactivada la conserva`() = runTest {
         val editCandidate = EditCandidate(candidates, register, activity, candidateMutex)
-        val id = candidates.save(candidato(Category.HEALTH.id))
-        desactivar(Category.HEALTH.id)
+        val id = candidates.save(candidato(CategoryIds.HEALTH))
+        desactivar(CategoryIds.HEALTH)
 
         val expenseId = editCandidate(id, 6_000, "Shell")!!
 
-        assertEquals(Category.HEALTH.id, categoriaGuardada(expenseId))
+        assertEquals(CategoryIds.HEALTH, categoriaGuardada(expenseId))
     }
 
     @Test
     fun `editar el monto de un gasto de una categoria ya desactivada NO lo mueve de categoria`() = runTest {
-        val id = register(gasto(Category.FUEL.id))
-        desactivar(Category.FUEL.id)
+        val id = register(gasto(CategoryIds.FUEL))
+        desactivar(CategoryIds.FUEL)
 
-        edit(id, amount = 9_999, merchant = "x", categoryId = Category.FUEL.id)
+        edit(id, amount = 9_999, merchant = "x", categoryId = CategoryIds.FUEL)
 
-        assertEquals(Category.FUEL.id, categoriaGuardada(id))
+        assertEquals(CategoryIds.FUEL, categoriaGuardada(id))
         assertEquals(9_999L, expenses.findById(id)!!.amount)
     }
 
     @Test
     fun `editar y cambiar a una categoria inexistente guarda Otro`() = runTest {
-        val id = register(gasto(Category.FOOD.id))
+        val id = register(gasto(CategoryIds.FOOD))
 
         edit(id, amount = 1_000, merchant = "x", categoryId = "no-existe")
 
-        assertEquals(Category.OTHER.id, categoriaGuardada(id))
+        assertEquals(CategoryIds.OTHER, categoriaGuardada(id))
     }
 
     @Test

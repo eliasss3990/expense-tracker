@@ -1,7 +1,7 @@
 package com.eliasgonzalez.expensetracker.domain.catalog
 
 import com.eliasgonzalez.expensetracker.domain.model.CatalogKind
-import com.eliasgonzalez.expensetracker.domain.model.Category
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.repository.CatalogRepository
 
 /**
@@ -49,7 +49,10 @@ class CatalogCategoryPolicy(
         // juzgar: se respeta lo pedido en vez de corromper el dato.
         if (categories.isEmpty()) return categoryId
         // Activa o no: lo unico que se rechaza es un id que no existe.
-        return if (categories.any { it.id == categoryId }) categoryId else Category.OTHER.id
+        if (categories.any { it.id == categoryId }) return categoryId
+        // El comodin es la entrada protegida del propio catalogo; CategoryIds.OTHER
+        // solo si (en un catalogo inconsistente) no hubiera ninguna.
+        return categories.firstOrNull { it.protected }?.id ?: CategoryIds.OTHER
     }
 
     override suspend fun forEditedExpense(requestedId: String, currentId: String): String =

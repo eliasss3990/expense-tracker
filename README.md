@@ -108,7 +108,7 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   ├── common/                    Helpers compartidos entre pantallas (ScreenSupport, etc.)
 │   │   └── ScreenSupport.kt
 │   └── theme/                     Colores, tipografía y modelo de UI de categoría
-│       ├── CategoryStyle.kt       Ícono de las categorías de fábrica
+│       ├── CategoryStyle.kt       Ícono de las categorías de fábrica, por id
 │       ├── CategoryUi.kt          CategoryUi + rememberCategoryOptions/Lookup (leen del catálogo)
 │       ├── Color.kt
 │       ├── Theme.kt
@@ -131,7 +131,8 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   ├── UpdateChecker.kt         Consulta la última Release de GitHub, compara versiones
 │   └── ApkInstaller.kt          Descarga (DownloadManager) + instala (FileProvider)
 ├── domain/                   Sin nada de Android - testeable en JVM puro
-│   ├── model/                   Expense, ExpenseCandidate, ActivityEntry, Category, CatalogEntry
+│   ├── model/                   Expense, ExpenseCandidate, ActivityEntry, CatalogEntry, CategoryIds
+│   │                             (CategoryIds = ids de fábrica guardados en la base: nunca cambian)
 │   ├── catalog/                 CatalogDefaults, CategoryPolicy (qué categoría se guarda),
 │   │                             CategoryDisplay (mostrar por id), CatalogUsage (¿en uso?)
 │   ├── notification/            Puerto CandidateNotifier (retirar la notificación al resolver)
