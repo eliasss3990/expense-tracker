@@ -9,8 +9,8 @@ import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
 import kotlinx.coroutines.sync.Mutex
 
 /**
- * Un unico caso de uso para registro manual, Quick Tile y confirmacion de
- * candidatos - la unica diferencia entre esos flujos es el campo `source`
+ * Un unico caso de uso para registro manual, Quick Tile, confirmacion de candidatos
+ * y auto-registro IA validado - la diferencia entre esos flujos es el campo `source`
  * del Expense, nunca la logica.
  *
  * Comparte un Mutex con EditExpense/DeleteExpense (inyectado desde

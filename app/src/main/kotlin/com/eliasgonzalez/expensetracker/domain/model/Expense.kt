@@ -4,8 +4,8 @@ enum class ExpenseSource { MANUAL, QUICK_TILE, NOTIFICATION }
 
 /**
  * Un gasto confirmado: dinero que ya forma parte de las estadisticas.
- * Nunca se crea directo desde un parser o notificacion - siempre pasa por
- * un ExpenseCandidate primero (ver domain/model/ExpenseCandidate.kt).
+ * Puede crearse desde un candidato confirmado o mediante auto-registro IA cuando
+ * la reconciliacion deterministica no encuentra contradicciones y la politica lo permite.
  */
 data class Expense(
     val id: Long = 0,
