@@ -1,33 +1,58 @@
 # Expense Tracker
 
-App Android personal para registrar gastos y detectarlos automáticamente
-a partir de notificaciones de pago (banco, billeteras, etc.), sin nunca
-confirmar un gasto sin que el usuario lo revise.
+App Android personal para registrar gastos y detectar operaciones
+financieras a partir de notificaciones de bancos y billeteras. Mantiene los
+parsers deterministas existentes y agrega un analizador IA local opcional.
 
 ## Cómo funciona
 
-- `NotificationListenerService` capta notificaciones de otras apps. Cada
-  fuente prueba primero su propio parser (`UenoBankParser` para la app y
-  los mails de Ueno Bank, `BancoFamiliarParser` para las transferencias
-  salientes de Banco Familiar/Eko vía Gmail) y si ninguno aplica cae al
-  parser genérico (regex sobre `Gs.`/`₲`/`PYG` + monto, restringido a una
-  lista blanca de paquetes conocidos). El resultado es siempre un
-  `ExpenseCandidate` — **nunca** un gasto confirmado directamente.
+- `NotificationListenerService` capta notificaciones de fuentes permitidas.
+  `ParserEngine` ejecuta primero los parsers actuales (`UenoBankParser`,
+  `BancoFamiliarParser` y `GenericPurchaseParser`) sin modificarlos. La
+  notificación original y el resultado del parser —o `null` si no reconoció
+  el formato— se guardan en una cola SQLite persistente para análisis.
+- El analizador local usa Gemma 4 E2B Instruct mediante LiteRT-LM. La IA
+  extrae movimiento, importe, moneda, comercio y evidencia textual; después
+  `ReconcileTransaction` compara esos campos con el parser y aplica reglas
+  deterministas. La confianza que declara el propio modelo no se usa como
+  criterio de seguridad.
+- El modo inicial es **Sombra**: se calculan y guardan decisiones de IA, pero
+  el comportamiento visible sigue siendo el legacy. **Asistido** permite
+  que la IA proponga candidatos para revisar. **Automático** permite registrar
+  un `Expense` directamente solo si la reconciliación devuelve
+  `AUTO_REGISTER`; no crea un candidato intermedio. Las dudas o
+  contradicciones críticas siguen pasando por revisión.
+- El modo Automático está desactivado por defecto y requiere confirmación
+  explícita desde el menú → "IA local". No conviene activarlo hasta revisar
+  resultados reales en modo Sombra. La pantalla muestra conteos de decisiones,
+  no una precisión estimada: la precisión requiere contrastar resultados con
+  aceptaciones, ediciones y rechazos reales.
+- Si el modelo no está instalado o falla, se conserva el fallback legacy:
+  los parsers que sí reconocieron una operación siguen creando candidatos.
+  Las notificaciones sin parser quedan pendientes de reintento cuando el
+  modelo se instale.
+- La cola guarda el contenido original localmente, recupera trabajos que
+  quedaron en `PROCESSING` tras cerrar el proceso y evita procesar dos veces
+  el mismo evento. Los registros terminales se conservan 30 días. No se envía
+  el contenido de las notificaciones a un servicio externo de IA.
+- Para habilitar otra app bancaria no hace falta escribir un parser:
+  primero se verifica su `packageName` real y se agrega a
+  `GenericPurchaseParser.TRUSTED_PACKAGES`. La IA podrá analizar sus
+  notificaciones con indicios financieros aunque cambie el formato del monto.
+  La allowlist sigue siendo obligatoria; no se procesan apps arbitrarias.
+- La descarga del modelo es manual, desde menú → "IA local", pesa
+  aproximadamente 2.59 GB y se limita a Wi-Fi. El archivo está fijado a una
+  revisión concreta de Hugging Face y se verifica por tamaño y SHA-256 antes
+  de permitir la inferencia.
 - Las notificaciones de dinero **entrante** (transferencias recibidas,
-  "Recibiste"/"acreditado"/etc.) se descartan explícitamente en cada
-  parser — nunca se detectan como gasto.
-- Antes de crear el candidato, se chequea si ya existe uno muy parecido
-  detectado hace poco (mismo monto+moneda, comercio equivalente o sin
-  comercio confiable todavía) — dentro de 5 minutos contra candidatos
-  pendientes y de 1 minuto contra los ya resueltos (aceptados, editados
-  o rechazados), así el segundo aviso de la misma compra no vuelve a
-  sugerirse aunque ya hayas resuelto el primero; cada descarte deja una
-  línea de log sin montos ni comercios. Los gastos cargados a mano no se
-  comparan —
-  evita duplicar cuando el banco y una billetera/mail avisan la misma
-  compra casi al mismo tiempo (o cuando un mismo banco manda dos mails
-  de confirmación para la misma operación, como hace Banco Familiar). El
-  chequeo está protegido con un `Mutex` compartido entre todos los casos
+  "Recibiste"/"acreditado"/etc.) no generan candidatos legacy. La reconciliación
+  también las rechaza si el modelo intenta clasificarlas como egreso.
+- Antes de crear un candidato, el flujo legacy compara candidatos recientes
+  (mismo monto+moneda y comercio equivalente o aún no confiable): 5 minutos
+  contra pendientes y 1 minuto contra los ya resueltos. El auto-registro IA
+  también comprueba si la misma notificación ya generó un candidato y compara
+  gastos recientes —incluidos los cargados manualmente— para reducir
+  duplicados entre canales. El chequeo está protegido con un `Mutex` compartido entre todos los casos
   de uso que tocan candidatos/gastos, para que operaciones casi
   simultáneas no se cuelen como duplicados ni pisen datos entre sí. Esos
   casos de uso corren además en una sección **no cancelable**: aceptar,
@@ -126,7 +151,7 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │       ├── Color.kt
 │       ├── Theme.kt
 │       └── Type.kt
-├── notification/             Detección de gastos vía notificaciones
+├── notification/             Captura y parsers deterministas de notificaciones
 │   ├── ExpenseNotificationListenerService.kt
 │   ├── ParserEngine.kt          Prueba el parser de la fuente antes que el genérico
 │   ├── NotificationParser.kt    Interfaz que implementa cada parser
@@ -146,13 +171,16 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   ├── UpdateFailure.kt         Por qué falló la consulta (límite de GitHub, sin red, TLS...)
 │   ├── ReleaseLinks.kt          Versión y enlaces de la release derivados de la etiqueta (puro)
 │   └── ApkInstaller.kt          Descarga (DownloadManager) + instala (FileProvider)
-├── domain/                   Sin nada de Android - testeable en JVM puro
+├── data/analysis/            Runtime LiteRT-LM, descarga verificada y modo IA
+├── data/local/               SQLite, incluida la cola persistente de análisis
+├── domain/                   Reglas y contratos sin Android - testeable en JVM puro
 │   ├── model/                   Expense, ExpenseCandidate, ActivityEntry, CatalogEntry, CategoryIds
 │   │                             (CategoryIds = ids de fábrica guardados en la base: nunca cambian)
 │   ├── catalog/                 CatalogDefaults, CategoryPolicy (qué categoría se guarda),
 │   │                             CategoryDisplay (mostrar por id), CatalogUsage (¿en uso?)
 │   ├── log/                     AppLog (fachada de logging) + LogSink (destino). Sin Android
-│   ├── notification/            Puerto CandidateNotifier (retirar la notificación al resolver)
+│   ├── analysis/                Extracción, reconciliación, modos y métricas de IA
+│   ├── notification/            Puertos CandidateNotifier y CandidateAlertPublisher
 │   ├── retry/                   retrying(): reintento con backoff lineal (puro)
 │   ├── repository/              Interfaces (implementadas en data/local)
 │   ├── filter/                  ExpenseFilters (funciones puras de filtrado del Dashboard)
