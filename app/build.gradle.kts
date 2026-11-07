@@ -76,4 +76,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     // SQLite real en la JVM para probar las migraciones de la base sin emulador (DbMigrationTest).
     testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
+    // org.json real en la JVM: el de android.jar es un stub que lanza "not mocked" (InterpretationCodec).
+    testImplementation("org.json:json:20240303")
 }

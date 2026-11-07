@@ -27,7 +27,7 @@ internal interface SqlExecutor {
  */
 internal object DbSchema {
 
-    const val VERSION = 3
+    const val VERSION = 4
 
     private val CREATE_EXPENSES = """
         CREATE TABLE expenses (
@@ -43,6 +43,60 @@ internal object DbSchema {
             source_reference INTEGER
         )
     """.trimIndent()
+
+    /**
+     * Cola persistente de avisos pendientes de analisis (v4). Guarda el texto de la notificacion
+     * (necesario para reintentar y para reconstruir una decision) con retencion acotada: ver
+     * AnalysisQueueRepository.pruneBefore. Sin ninguna columna propia de un modelo concreto.
+     */
+    private val CREATE_ANALYSIS_QUEUE = """
+        CREATE TABLE IF NOT EXISTS analysis_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_key TEXT NOT NULL UNIQUE,
+            package_name TEXT NOT NULL,
+            application_name TEXT NOT NULL,
+            title TEXT NOT NULL,
+            text TEXT NOT NULL,
+            big_text TEXT NOT NULL,
+            notified_at INTEGER NOT NULL,
+            parser_kind TEXT NOT NULL,
+            parser_id TEXT,
+            parser_amount INTEGER,
+            parser_currency TEXT,
+            parser_merchant TEXT,
+            parser_merchant_confident INTEGER,
+            trust TEXT NOT NULL,
+            state TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            enqueued_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+    """.trimIndent()
+
+    private val CREATE_ANALYSIS_QUEUE_INDEX =
+        "CREATE INDEX IF NOT EXISTS idx_analysis_queue_state ON analysis_queue (state, id)"
+
+    /** Por que cada aviso termino como termino (v4): codigos y la interpretacion versionada en JSON. */
+    private val CREATE_DECISION_AUDIT = """
+        CREATE TABLE IF NOT EXISTS decision_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_key TEXT NOT NULL,
+            decided_at INTEGER NOT NULL,
+            mode TEXT NOT NULL,
+            source_app TEXT NOT NULL,
+            outcome TEXT,
+            reasons TEXT NOT NULL,
+            effect TEXT NOT NULL,
+            expense_id INTEGER,
+            candidate_id INTEGER,
+            interpretations TEXT NOT NULL,
+            error_class TEXT
+        )
+    """.trimIndent()
+
+    private val CREATE_DECISION_AUDIT_INDEX =
+        "CREATE INDEX IF NOT EXISTS idx_decision_audit_decided_at ON decision_audit (decided_at)"
 
     private val CREATE_CANDIDATES = """
         CREATE TABLE candidates (
@@ -101,6 +155,7 @@ internal object DbSchema {
         db.exec(CREATE_CANDIDATES)
         db.exec(CREATE_ACTIVITY_LOG)
         db.exec(CREATE_CATALOG)
+        createAnalysisTables(db)
         seedCatalog(db, catalogSeed)
     }
 
@@ -122,6 +177,17 @@ internal object DbSchema {
             db.exec(CREATE_CATALOG)
             seedCatalog(db, CatalogSeedV3.categories)
         }
+        if (oldVersion < 4) {
+            // v4: cola y auditoria del analisis de notificaciones. Solo tablas nuevas.
+            createAnalysisTables(db)
+        }
+    }
+
+    private fun createAnalysisTables(db: SqlExecutor) {
+        db.exec(CREATE_ANALYSIS_QUEUE)
+        db.exec(CREATE_ANALYSIS_QUEUE_INDEX)
+        db.exec(CREATE_DECISION_AUDIT)
+        db.exec(CREATE_DECISION_AUDIT_INDEX)
     }
 
     private fun seedCatalog(db: SqlExecutor, entries: List<CatalogEntry>) {
