@@ -1,28 +1,12 @@
 package com.eliasgonzalez.expensetracker.notification
-
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
-import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
-import com.eliasgonzalez.expensetracker.R
 import com.eliasgonzalez.expensetracker.di.ServiceLocator
+import com.eliasgonzalez.expensetracker.domain.analysis.NotificationSnapshot
+import com.eliasgonzalez.expensetracker.domain.analysis.ParserSnapshot
+import com.eliasgonzalez.expensetracker.domain.analysis.TransactionAnalysisInput
 import com.eliasgonzalez.expensetracker.domain.log.AppLog
-import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
-import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
-import com.eliasgonzalez.expensetracker.ui.EXTRA_EDIT_CANDIDATE_ID
-import com.eliasgonzalez.expensetracker.ui.QuickAddActivity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 
 const val CHANNEL_ID_CANDIDATES = "expense_candidates"
 const val ACTION_ACCEPT = "com.eliasgonzalez.expensetracker.ACTION_ACCEPT"
@@ -30,18 +14,6 @@ const val ACTION_REJECT = "com.eliasgonzalez.expensetracker.ACTION_REJECT"
 const val EXTRA_CANDIDATE_ID = "candidate_id"
 
 class ExpenseNotificationListenerService : NotificationListenerService() {
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    override fun onCreate() {
-        super.onCreate()
-        ensureChannel()
-    }
-
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
-    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == applicationContext.packageName) return
@@ -56,28 +28,32 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
             timestamp = sbn.postTime,
         )
 
-        val result = ParserEngine.parse(context) ?: return
+        // Mantener la allowlist actual: IA puede analizar aunque el parser devuelva null,
+        // pero no recibe notificaciones de aplicaciones ajenas a las fuentes financieras.
+        if (!ParserEngine.isEligibleForAnalysis(context)) return
 
-        val candidate = ExpenseCandidate(
-            amount = result.amount,
-            currency = result.currency,
-            merchant = result.merchant,
-            merchantConfident = result.merchantConfident,
-            occurredAt = context.timestamp,
-            detectedAt = context.timestamp,
-            sourceType = ExpenseSource.NOTIFICATION,
-            sourceApp = context.applicationName,
-            parserId = result.parserId,
-            confidence = result.confidence,
+        val parserResult = ParserEngine.parse(context)
+        val input = TransactionAnalysisInput(
+            notification = NotificationSnapshot(
+                packageName = context.packageName,
+                applicationName = context.applicationName,
+                title = context.title,
+                text = context.text,
+                bigText = context.bigText,
+                timestamp = context.timestamp,
+            ),
+            parserResult = parserResult?.let {
+                ParserSnapshot(
+                    amount = it.amount,
+                    currency = it.currency,
+                    merchant = it.merchant,
+                    merchantConfident = it.merchantConfident,
+                    parserId = it.parserId,
+                    confidence = it.confidence,
+                )
+            },
         )
-        scope.launch {
-            val container = ServiceLocator.get()
-            val id = container.createCandidate(candidate) ?: return@launch
-            // Si el usuario ya lo resolvio desde la Bandeja entre el guardado y
-            // este punto, publicar la notificacion la dejaria obsoleta.
-            if (container.findPendingCandidate(id) == null) return@launch
-            showCandidateNotification(candidate.copy(id = id))
-        }
+        ServiceLocator.get().enqueueNotificationAnalysis(input)
     }
 
     private fun appLabelFor(packageName: String): String = try {
@@ -89,66 +65,4 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
         packageName
     }
 
-    private fun ensureChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(
-            CHANNEL_ID_CANDIDATES,
-            "Gastos detectados",
-            NotificationManager.IMPORTANCE_HIGH,
-        )
-        manager.createNotificationChannel(channel)
-    }
-
-    private fun showCandidateNotification(candidate: ExpenseCandidate) {
-        val acceptIntent = actionPendingIntent(ACTION_ACCEPT, candidate.id)
-        val rejectIntent = actionPendingIntent(ACTION_REJECT, candidate.id)
-        val editIntent = editActivityPendingIntent(candidate.id)
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID_CANDIDATES)
-            // Silueta de la marca (ic_stat_expense), no el icono generico del sistema
-            // (la "i" de android.R.drawable.ic_dialog_info). El color de marca se pinta con
-            // setColor: Android tiñe con el el circulo del icono en la bandeja expandida.
-            .setSmallIcon(R.drawable.ic_stat_expense)
-            .setColor(ContextCompat.getColor(this, R.color.brand_primary))
-            .setContentTitle("💳 Gasto detectado")
-            .setContentText("${candidate.merchant} — ₲${"%,d".format(candidate.amount)}")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .addAction(0, "Aceptar", acceptIntent)
-            .addAction(0, "Editar", editIntent)
-            .addAction(0, "Rechazar", rejectIntent)
-            .build()
-
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(AndroidCandidateNotifier.notificationIdFor(candidate.id), notification)
-    }
-
-    private fun actionPendingIntent(action: String, candidateId: Long): PendingIntent {
-        val intent = Intent(this, CandidateActionReceiver::class.java).apply {
-            this.action = action
-            putExtra(EXTRA_CANDIDATE_ID, candidateId)
-        }
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        return PendingIntent.getBroadcast(this, requestCodeFor(candidateId, action), intent, flags)
-    }
-
-    private fun editActivityPendingIntent(candidateId: Long): PendingIntent {
-        val intent = Intent(this, QuickAddActivity::class.java).apply {
-            putExtra(EXTRA_EDIT_CANDIDATE_ID, candidateId)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        return PendingIntent.getActivity(this, requestCodeFor(candidateId, "edit_activity"), intent, flags)
-    }
-
-    // `candidateId.toInt() * 10 + ...` truncaba el Long a Int y podia
-    // colisionar (dos candidateId distintos, mismo request code) para
-    // ids por encima de ~2 mil millones - con FLAG_UPDATE_CURRENT eso
-    // pisaria los extras de un PendingIntent con los del otro. hashCode()
-    // de un string combinado no tiene ese problema de truncamiento
-    // aritmetico (aunque en teoria puede colisionar, es astronomicamente
-    // menos probable que la aritmetica simple de antes).
-    private fun requestCodeFor(candidateId: Long, tag: String): Int =
-        "$candidateId:$tag".hashCode()
 }

@@ -18,11 +18,9 @@ package com.eliasgonzalez.expensetracker.notification
  * defensa real es no confiar en el contenido de una app que no está en
  * la lista.
  *
- * Para agregar un banco/billetera nuevo: confirmar el paquete real
- * (ej. via `adb shell dumpsys package <nombre> | grep packageName`, o
- * revisando la notificación con un inspector) y sumarlo acá - nunca a
- * ciegas, un paquete mal escrito simplemente no matchea nunca (falla
- * cerrado, no abre un agujero).
+ * Para agregar un banco/billetera nuevo: confirmar el paquete real y sumarlo
+ * a TRUSTED_PACKAGES. No hace falta crear un parser: ParserEngine habilita IA
+ * para notificaciones con indicios financieros aunque el parser devuelva null.
  */
 object GenericPurchaseParser : NotificationParser {
 
@@ -31,6 +29,22 @@ object GenericPurchaseParser : NotificationParser {
         "com.google.android.gm", // Gmail (mails de confirmacion de compra/transferencia)
         "com.google.android.apps.walletnfcrel", // Google Wallet
     )
+
+    private val financialHints = listOf(
+        "compra", "compraste", "pago", "pagaste", "transferencia", "transaccion",
+        "transacción", "debito", "débito", "credito", "crédito", "tarjeta",
+        "movimiento", "retiro", "cobro", "acredit", "recib", "saldo", "consumo",
+        "reversa", "reembolso", "devolucion", "devolución", "operacion", "operación",
+        "purchase", "payment", "paid", "transfer", "debit", "credit", "card",
+        "transaction", "withdraw", "refund", "deposit", "received", "credited", "incoming", "deposited",
+    )
+
+    fun isTrustedPackage(packageName: String): Boolean = packageName in TRUSTED_PACKAGES
+
+    fun hasFinancialHint(context: NotificationContext): Boolean {
+        val body = "${context.title} ${context.text} ${context.bigText}".lowercase()
+        return financialHints.any { hint -> body.contains(hint) }
+    }
 
     private val amountRegex = Regex("""(?:Gs\.?|₲|PYG)\s*([\d.,]+)""", RegexOption.IGNORE_CASE)
     private val merchantRegex = Regex("""(?:en|in)\s+([A-Za-zÀ-ÿ0-9 '&.-]{2,40})""", RegexOption.IGNORE_CASE)

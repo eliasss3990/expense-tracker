@@ -115,6 +115,23 @@ class ParserEngineTest {
     }
 
     @Test
+    fun `la elegibilidad IA respeta la allowlist existente de parsers`() {
+        val purchase = genericNotification("Compraste Gs. 25.000 en Farmacia")
+        val unknownApp = purchase.copy(packageName = "com.example.untrusted")
+
+        assertEquals(true, ParserEngine.isEligibleForAnalysis(purchase))
+        assertEquals(false, ParserEngine.isEligibleForAnalysis(unknownApp))
+    }
+
+    @Test
+    fun `un ingreso Ueno reconocido por fuente puede analizarse aunque el parser lo descarte`() {
+        val context = bankAppNotification("Recibiste Gs. 800.000", "Detalle de transferencia")
+
+        assertEquals(null, ParserEngine.parse(context))
+        assertEquals(true, ParserEngine.isEligibleForAnalysis(context))
+    }
+
+    @Test
     fun `notificacion solo con espacios no matchea ningun parser`() {
         val context = genericNotification("   \t\n  ")
 

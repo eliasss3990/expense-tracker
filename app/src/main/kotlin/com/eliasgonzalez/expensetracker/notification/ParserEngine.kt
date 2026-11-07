@@ -16,4 +16,14 @@ object ParserEngine {
         if (!GenericPurchaseParser.canHandle(context)) return null
         return GenericPurchaseParser.parse(context)
     }
+
+    /**
+     * Los parsers dedicados conservan prioridad. Para paquetes verificados de la
+     * allowlist, la IA también puede analizar formatos nuevos sin que el parser
+     * genérico reconozca el monto, siempre que haya indicios financieros.
+     */
+    fun isEligibleForAnalysis(context: NotificationContext): Boolean =
+        specificParsers.any { it.canHandle(context) } ||
+            (GenericPurchaseParser.isTrustedPackage(context.packageName) &&
+                (GenericPurchaseParser.canHandle(context) || GenericPurchaseParser.hasFinancialHint(context)))
 }
