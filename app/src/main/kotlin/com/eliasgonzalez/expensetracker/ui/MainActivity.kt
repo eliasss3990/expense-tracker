@@ -54,6 +54,7 @@ import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
 import com.eliasgonzalez.expensetracker.notification.isNotificationListenerEnabled
 import com.eliasgonzalez.expensetracker.notification.isPostNotificationsGranted
 import com.eliasgonzalez.expensetracker.ui.activitylog.ActivityScreen
+import com.eliasgonzalez.expensetracker.ui.ai.AiModelScreen
 import com.eliasgonzalez.expensetracker.ui.banners.MissingPermissionsBanner
 import com.eliasgonzalez.expensetracker.ui.banners.UpdateAvailableBanner
 import com.eliasgonzalez.expensetracker.ui.catalog.CategoriesScreen
@@ -79,6 +80,7 @@ private enum class Destination(val label: String) {
     TRAY("Bandeja"),
     ACTIVITY("Actividad"),
     CATEGORIES("Categorías"),
+    AI_MODEL("IA local"),
 }
 
 private const val SPLASH_MIN_DURATION_MS = 2000L
@@ -269,7 +271,7 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
     Scaffold(
         floatingActionButton = {
             // La pantalla de categorías tiene su propio botón "Nueva".
-            if (destination != Destination.CATEGORIES) {
+            if (destination != Destination.CATEGORIES && destination != Destination.AI_MODEL) {
                 FloatingActionButton(onClick = { showAddSheet = true }) {
                     Icon(Icons.Filled.Add, contentDescription = "Nuevo gasto")
                 }
@@ -303,6 +305,13 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                             onClick = {
                                 showOverflowMenu = false
                                 destination = Destination.CATEGORIES
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("IA local") },
+                            onClick = {
+                                showOverflowMenu = false
+                                destination = Destination.AI_MODEL
                             },
                         )
                         DropdownMenuItem(
@@ -366,6 +375,7 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                 Destination.TRAY -> TrayScreen()
                 Destination.ACTIVITY -> ActivityScreen()
                 Destination.CATEGORIES -> CategoriesScreen()
+                Destination.AI_MODEL -> AiModelScreen()
             }
         }
     }

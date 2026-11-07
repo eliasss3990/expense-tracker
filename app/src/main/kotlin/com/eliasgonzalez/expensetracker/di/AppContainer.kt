@@ -1,21 +1,30 @@
 package com.eliasgonzalez.expensetracker.di
 
 import android.content.Context
+import com.eliasgonzalez.expensetracker.data.analysis.LiteRtTransactionAnalyzer
+import com.eliasgonzalez.expensetracker.data.analysis.ModelInstaller
+import com.eliasgonzalez.expensetracker.data.analysis.SharedPreferencesAnalysisModeProvider
 import com.eliasgonzalez.expensetracker.data.local.DbHelper
 import com.eliasgonzalez.expensetracker.data.local.LocalActivityRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalCandidateRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalCatalogRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalExpenseRepository
+import com.eliasgonzalez.expensetracker.data.local.LocalNotificationAnalysisQueueRepository
 import com.eliasgonzalez.expensetracker.domain.catalog.CatalogCategoryPolicy
+import com.eliasgonzalez.expensetracker.domain.analysis.AnalyzeTransaction
+import com.eliasgonzalez.expensetracker.domain.analysis.ReconcileTransaction
+import com.eliasgonzalez.expensetracker.domain.analysis.TransactionAnalyzer
 import com.eliasgonzalez.expensetracker.domain.catalog.CategoryPolicy
 import com.eliasgonzalez.expensetracker.domain.catalog.ExpenseCatalogUsage
 import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import com.eliasgonzalez.expensetracker.domain.retry.retrying
 import com.eliasgonzalez.expensetracker.domain.notification.CandidateNotifier
+import com.eliasgonzalez.expensetracker.domain.notification.CandidateAlertPublisher
 import com.eliasgonzalez.expensetracker.domain.repository.ActivityRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository
 import com.eliasgonzalez.expensetracker.domain.repository.CatalogRepository
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
+import com.eliasgonzalez.expensetracker.domain.repository.NotificationAnalysisQueueRepository
 import com.eliasgonzalez.expensetracker.domain.usecase.ConfirmCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.CreateCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.CreateCatalogEntry
@@ -30,10 +39,13 @@ import com.eliasgonzalez.expensetracker.domain.usecase.ObserveCandidates
 import com.eliasgonzalez.expensetracker.domain.usecase.ObserveCatalog
 import com.eliasgonzalez.expensetracker.domain.usecase.ObserveExpenses
 import com.eliasgonzalez.expensetracker.domain.usecase.RegisterExpense
+import com.eliasgonzalez.expensetracker.domain.usecase.RegisterAnalyzedExpense
+import com.eliasgonzalez.expensetracker.domain.usecase.ProcessNotificationAnalysisQueue
 import com.eliasgonzalez.expensetracker.domain.usecase.RejectCandidate
 import com.eliasgonzalez.expensetracker.domain.usecase.RenameCatalogEntry
 import com.eliasgonzalez.expensetracker.domain.usecase.SetCatalogEntryActive
 import com.eliasgonzalez.expensetracker.notification.AndroidCandidateNotifier
+import com.eliasgonzalez.expensetracker.notification.AndroidCandidateAlertPublisher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -58,6 +70,7 @@ class AppContainer(context: Context) {
     private val localCandidateRepository = LocalCandidateRepository(dbHelper)
     private val localActivityRepository = LocalActivityRepository(dbHelper)
     private val localCatalogRepository = LocalCatalogRepository(dbHelper)
+    private val localNotificationAnalysisQueueRepository = LocalNotificationAnalysisQueueRepository(dbHelper)
 
     // Privados a propósito: la UI no debería tener una referencia directa
     // a un repositorio (eso le permitiría leer o mutar salteándose los
@@ -67,6 +80,7 @@ class AppContainer(context: Context) {
     private val candidateRepository: CandidateRepository = localCandidateRepository
     private val activityRepository: ActivityRepository = localActivityRepository
     private val catalogRepository: CatalogRepository = localCatalogRepository
+    private val notificationAnalysisQueueRepository: NotificationAnalysisQueueRepository = localNotificationAnalysisQueueRepository
 
     // Cada hydrate va aislado: que uno falle (fila corrupta, DB bloqueada)
     // ya no cancela a los demas ni deja el catalogo vacio todo el proceso, y
@@ -117,8 +131,17 @@ class AppContainer(context: Context) {
     private val catalogWriteMutex = Mutex()
 
     private val candidateNotifier: CandidateNotifier = AndroidCandidateNotifier(context.applicationContext)
+    val candidateAlertPublisher: CandidateAlertPublisher = AndroidCandidateAlertPublisher(context.applicationContext)
+    val modelInstaller = ModelInstaller(context.applicationContext)
+    val analysisModeProvider = SharedPreferencesAnalysisModeProvider(context.applicationContext)
+
+    // El modelo se inicializa de forma diferida en el primer analyze(); crear
+    // el adaptador no carga pesos ni bloquea el arranque de la aplicacion.
+    val transactionAnalyzer: TransactionAnalyzer = LiteRtTransactionAnalyzer(context.applicationContext, modelInstaller)
+    val analyzeTransaction = AnalyzeTransaction(transactionAnalyzer, ReconcileTransaction())
 
     val registerExpense = RegisterExpense(expenseRepository, activityRepository, expenseWriteMutex, categoryPolicy)
+    val registerAnalyzedExpense = RegisterAnalyzedExpense(candidateRepository, expenseRepository, registerExpense, candidateWriteMutex, awaitHydrated)
     val createCandidate = CreateCandidate(candidateRepository, activityRepository, candidateWriteMutex, categoryPolicy, awaitHydrated)
     val confirmCandidate = ConfirmCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier, awaitHydrated)
     val editCandidate = EditCandidate(candidateRepository, registerExpense, activityRepository, candidateWriteMutex, candidateNotifier, categoryPolicy, awaitHydrated)
@@ -130,6 +153,27 @@ class AppContainer(context: Context) {
     val observeCandidates = ObserveCandidates(candidateRepository)
     val observeActivity = ObserveActivity(activityRepository)
     val findPendingCandidate = FindPendingCandidate(candidateRepository)
+    val processNotificationAnalysisQueue = ProcessNotificationAnalysisQueue(
+        notificationAnalysisQueueRepository,
+        analyzeTransaction,
+        createCandidate,
+        findPendingCandidate,
+        registerAnalyzedExpense,
+        candidateAlertPublisher,
+        analysisModeProvider,
+        appScope,
+    )
+
+    fun enqueueNotificationAnalysis(input: com.eliasgonzalez.expensetracker.domain.analysis.TransactionAnalysisInput) {
+        processNotificationAnalysisQueue.enqueue(input)
+    }
+
+    fun retryFailedAnalyses() {
+        processNotificationAnalysisQueue.retryFailed()
+    }
+
+    suspend fun notificationAnalysisMetrics() = notificationAnalysisQueueRepository.metrics()
+
 
     // Catalogo gestionable: lo consumen los selectores/listados (ui/theme/
     // CategoryUi.kt) y la pantalla de gestion (ui/catalog/CategoriesScreen.kt).
@@ -138,6 +182,12 @@ class AppContainer(context: Context) {
     val createCatalogEntry = CreateCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)
     val renameCatalogEntry = RenameCatalogEntry(catalogRepository, catalogWriteMutex, awaitHydrated)
     val setCatalogEntryActive = SetCatalogEntryActive(catalogRepository, catalogWriteMutex, awaitHydrated)
+    init {
+        processNotificationAnalysisQueue.recoverOnStartup(
+            retryFailed = modelInstaller.state().status == com.eliasgonzalez.expensetracker.data.analysis.ModelInstallStatus.INSTALLED
+        )
+    }
+
     val deleteCatalogEntry = DeleteCatalogEntry(
         catalogRepository, catalogUsage, catalogWriteMutex, awaitHydrated,
         // Orden de locks: catalogo, candidatos, gastos (ver DeleteCatalogEntry).
