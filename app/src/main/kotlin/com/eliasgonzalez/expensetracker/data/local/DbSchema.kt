@@ -11,6 +11,7 @@ import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
  */
 internal interface SqlExecutor {
     fun exec(sql: String, args: List<Any?> = emptyList())
+    fun hasColumn(tableName: String, columnName: String): Boolean
 }
 
 /**
@@ -27,7 +28,7 @@ internal interface SqlExecutor {
  */
 internal object DbSchema {
 
-    const val VERSION = 3
+    const val VERSION = 5
 
     private val CREATE_EXPENSES = """
         CREATE TABLE expenses (
@@ -58,7 +59,8 @@ internal object DbSchema {
             source_app TEXT,
             parser_id TEXT,
             confidence REAL NOT NULL,
-            status TEXT NOT NULL
+            status TEXT NOT NULL,
+            merchant_confident INTEGER NOT NULL DEFAULT 1
         )
     """.trimIndent()
 
@@ -90,6 +92,38 @@ internal object DbSchema {
         )
     """.trimIndent()
 
+    private val CREATE_NOTIFICATION_ANALYSIS_QUEUE = """
+        CREATE TABLE IF NOT EXISTS notification_analysis_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_key TEXT NOT NULL UNIQUE,
+            package_name TEXT NOT NULL,
+            application_name TEXT NOT NULL,
+            title TEXT NOT NULL,
+            notification_text TEXT NOT NULL,
+            big_text TEXT NOT NULL,
+            posted_at INTEGER NOT NULL,
+            parser_amount INTEGER,
+            parser_currency TEXT,
+            parser_merchant TEXT,
+            parser_merchant_confident INTEGER,
+            parser_id TEXT,
+            parser_confidence REAL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            model_version TEXT,
+            decision TEXT,
+            movement TEXT,
+            result_amount INTEGER,
+            result_currency TEXT,
+            result_merchant TEXT,
+            occurred_at INTEGER,
+            reasons TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+    """.trimIndent()
+
     private const val INSERT_CATALOG_IGNORING_EXISTING =
         "INSERT OR IGNORE INTO catalog_entries " +
             "(kind, id, label, color, active, sort_order, built_in, protected) " +
@@ -101,6 +135,7 @@ internal object DbSchema {
         db.exec(CREATE_CANDIDATES)
         db.exec(CREATE_ACTIVITY_LOG)
         db.exec(CREATE_CATALOG)
+        db.exec(CREATE_NOTIFICATION_ANALYSIS_QUEUE)
         seedCatalog(db, catalogSeed)
     }
 
@@ -121,6 +156,15 @@ internal object DbSchema {
             // v3: catalogo gestionable. No toca expenses/candidates/activity_log.
             db.exec(CREATE_CATALOG)
             seedCatalog(db, CatalogSeedV3.categories)
+        }
+        if (oldVersion < 4 && !db.hasColumn("candidates", "merchant_confident")) {
+            // v4: conservar si el comercio detectado por el parser era confiable.
+            // Las filas historicas se consideran confiables para mantener el comportamiento previo.
+            db.exec("ALTER TABLE candidates ADD COLUMN merchant_confident INTEGER NOT NULL DEFAULT 1")
+        }
+        if (oldVersion < 5) {
+            // v5: cola persistente de notificaciones para analizar sin perder trabajo al morir el proceso.
+            db.exec(CREATE_NOTIFICATION_ANALYSIS_QUEUE)
         }
     }
 

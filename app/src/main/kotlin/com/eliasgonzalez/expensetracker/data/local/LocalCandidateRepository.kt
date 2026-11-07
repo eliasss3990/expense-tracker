@@ -63,6 +63,7 @@ class LocalCandidateRepository(private val dbHelper: DbHelper) : CandidateReposi
         put("parser_id", parserId)
         put("confidence", confidence)
         put("status", status.name)
+        put("merchant_confident", if (merchantConfident) 1 else 0)
     }
 
     private fun Cursor.toCandidate() = ExpenseCandidate(
@@ -79,5 +80,6 @@ class LocalCandidateRepository(private val dbHelper: DbHelper) : CandidateReposi
         parserId = getString(getColumnIndexOrThrow("parser_id")),
         confidence = getDouble(getColumnIndexOrThrow("confidence")),
         status = CandidateStatus.valueOf(getString(getColumnIndexOrThrow("status"))),
+        merchantConfident = getInt(getColumnIndexOrThrow("merchant_confident")) != 0,
     )
 }

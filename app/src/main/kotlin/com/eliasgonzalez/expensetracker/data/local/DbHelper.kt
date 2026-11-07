@@ -39,7 +39,7 @@ class DbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DbSc
     }
 
     // Instalar sobre una base MAS NUEVA (ej. probar un hotfix o una rama con
-    // DB_VERSION menor sobre datos ya en v3) lanzaria SQLiteException en cada
+    // DB_VERSION menor sobre datos ya en v5) lanzaria SQLiteException en cada
     // arranque y solo dejaria borrar los datos. Como las migraciones son SOLO
     // aditivas, la version vieja ignora las tablas/columnas que no conoce, asi
     // que tolerar el downgrade es seguro.

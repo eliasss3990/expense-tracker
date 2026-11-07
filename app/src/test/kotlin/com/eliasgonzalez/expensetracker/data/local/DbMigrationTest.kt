@@ -48,6 +48,17 @@ class DbMigrationTest {
                 st.executeUpdate()
             }
         }
+
+        override fun hasColumn(tableName: String, columnName: String): Boolean {
+            require(tableName.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")))
+            var found = false
+            conn.createStatement().use { st ->
+                st.executeQuery("PRAGMA table_info($tableName)").use { rs ->
+                    while (rs.next()) if (rs.getString(2) == columnName) found = true
+                }
+            }
+            return found
+        }
     }
 
     /** Lo que hace SQLiteOpenHelper: todo en una transaccion, commit si sale bien, rollback si lanza. */
@@ -149,6 +160,42 @@ class DbMigrationTest {
         sql("UPDATE candidates SET description = 'detectado' WHERE id = 1")
     }
 
+    /** Esquema v3 real: v2 + catalogo, antes de agregar merchant_confident en v4. */
+    private fun createV3WithData() {
+        createV2ByAlterWithData()
+        sql("""
+            CREATE TABLE catalog_entries (
+                kind TEXT NOT NULL, id TEXT NOT NULL, label TEXT NOT NULL, color TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0,
+                built_in INTEGER NOT NULL DEFAULT 0, protected INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (kind, id)
+            )
+        """.trimIndent())
+        CatalogSeedV3.categories.forEach { entry ->
+            conn.prepareStatement(
+                "INSERT OR IGNORE INTO catalog_entries " +
+                    "(kind, id, label, color, active, sort_order, built_in, protected) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            ).use { st ->
+                st.setString(1, entry.kind)
+                st.setString(2, entry.id)
+                st.setString(3, entry.label)
+                st.setString(4, entry.color)
+                st.setInt(5, if (entry.active) 1 else 0)
+                st.setInt(6, entry.sortOrder)
+                st.setInt(7, if (entry.builtIn) 1 else 0)
+                st.setInt(8, if (entry.protected) 1 else 0)
+                st.executeUpdate()
+            }
+        }
+    }
+
+    /** Esquema v4 real: v3 + merchant_confident, antes de la cola persistente v5. */
+    private fun createV4WithData() {
+        createV3WithData()
+        sql("ALTER TABLE candidates ADD COLUMN merchant_confident INTEGER NOT NULL DEFAULT 1")
+    }
+
     /** v2 de una base creada por onCreate (instalacion nueva o recreada tras el incidente): sin default. */
     private fun createV2FromScratchWithData() {
         sql(v1Expenses); sql(v2CandidatesFromScratch); sql(activityLog)
@@ -156,7 +203,7 @@ class DbMigrationTest {
         sql("INSERT INTO candidates VALUES (1, 50000, 'PYG', 'Ueno', 'OTHER', 'detectado', 300, 301, 'NOTIFICATION', 'com.ueno', 'ueno', 0.9, 'PENDING')")
     }
 
-    /** Las dos variantes REALES de v2 que existieron: cada prueba de v2->v3 corre sobre ambas. */
+    /** Las dos variantes REALES de v2 que existieron: cada prueba de v2->v5 corre sobre ambas. */
     private fun forEachV2Variant(block: (name: String) -> Unit) {
         listOf(
             "v2 migrada con ALTER" to ::createV2ByAlterWithData,
@@ -206,12 +253,12 @@ class DbMigrationTest {
                 )
             }
 
-    private val schemaTables = listOf("expenses", "candidates", "activity_log", "catalog_entries")
+    private val schemaTables = listOf("expenses", "candidates", "activity_log", "catalog_entries", "notification_analysis_queue")
 
-    // --- v2 -> v3 con datos reales, sobre las DOS variantes de v2 ----------------
+    // --- v2 -> v5 con datos reales, sobre las DOS variantes de v2 ----------------
 
     @Test
-    fun `migrar de v2 a v3 conserva TODOS los gastos, candidatos y actividad`() {
+    fun `migrar de v2 a v5 conserva TODOS los gastos, candidatos y actividad`() {
         forEachV2Variant { variante ->
             val gastosAntes = rows("SELECT * FROM expenses ORDER BY id")
             val candidatosAntes = rows("SELECT * FROM candidates ORDER BY id")
@@ -220,14 +267,14 @@ class DbMigrationTest {
             migrate(2)
 
             assertEquals(variante, gastosAntes, rows("SELECT * FROM expenses ORDER BY id"))
-            assertEquals(variante, candidatosAntes, rows("SELECT * FROM candidates ORDER BY id"))
+            assertEquals(variante, candidatosAntes, rows("SELECT * FROM candidates ORDER BY id").map { it.dropLast(1) })
             assertEquals(variante, actividadAntes, rows("SELECT * FROM activity_log ORDER BY id"))
             assertEquals(variante, 2L, count("SELECT COUNT(*) FROM expenses"))
         }
     }
 
     @Test
-    fun `migrar de v2 a v3 crea y siembra el catalogo con la lista congelada`() {
+    fun `migrar de v2 a v5 crea y siembra el catalogo con la lista congelada`() {
         forEachV2Variant { variante ->
             migrate(2)
 
@@ -236,12 +283,23 @@ class DbMigrationTest {
     }
 
     @Test
-    fun `migrar dos veces no duplica el catalogo (idempotente)`() {
+    fun `migrar de v2 a v5 siembra el catalogo una sola vez`() {
+        forEachV2Variant { variante ->
+            migrate(2)
+
+            assertEquals(variante, 11L, count("SELECT COUNT(*) FROM catalog_entries"))
+            assertTrue("merchant_confident no fue agregada", "merchant_confident" in columnNames("candidates"))
+        }
+    }
+
+    @Test
+    fun `migrar dos veces no duplica el catalogo ni vuelve a agregar columnas`() {
         forEachV2Variant { variante ->
             migrate(2)
             migrate(2)
 
             assertEquals(variante, 11L, count("SELECT COUNT(*) FROM catalog_entries"))
+            assertEquals(variante, 1L, count("SELECT COUNT(*) FROM pragma_table_info('candidates') WHERE name = 'merchant_confident'"))
         }
     }
 
@@ -263,11 +321,6 @@ class DbMigrationTest {
 
     @Test
     fun `COMPORTAMIENTO CONOCIDO - repetir la migracion re-siembra una categoria de fabrica que el usuario elimino`() {
-        // INSERT OR IGNORE solo ignora filas que EXISTEN: si el usuario borro una de fabrica, una
-        // segunda ejecucion de la migracion la vuelve a crear. En produccion NO ocurre porque
-        // SQLiteOpenHelper llama onUpgrade UNA sola vez por salto de version (y onCreate nunca
-        // corre sobre una base existente). Este test deja documentado el limite: la proteccion
-        // es "la migracion corre una vez", no "la migracion es inofensiva al repetirla".
         createV2ByAlterWithData()
         migrate(2)
         sql("DELETE FROM catalog_entries WHERE id = 'MECHANIC'")
@@ -278,10 +331,40 @@ class DbMigrationTest {
         assertEquals(11L, count("SELECT COUNT(*) FROM catalog_entries"))
     }
 
-    // --- v1 -> v3 (salto de dos versiones) -------------------------------------
+    // --- migraciones historicas v1/v2/v3/v4 -> v5 ------------------------------------
 
     @Test
-    fun `migrar de v1 a v3 agrega description a los candidatos existentes sin perder nada`() {
+    fun `migrar de v3 a v5 agrega merchant_confident y cola sin alterar los datos existentes`() {
+        createV3WithData()
+        val expensesBefore = rows("SELECT * FROM expenses ORDER BY id")
+        val candidatesBefore = rows("SELECT * FROM candidates ORDER BY id")
+
+        migrate(3)
+
+        assertEquals(expensesBefore, rows("SELECT * FROM expenses ORDER BY id"))
+        assertEquals(candidatesBefore, rows("SELECT * FROM candidates ORDER BY id").map { it.dropLast(1) })
+        assertEquals(1L, count("SELECT merchant_confident FROM candidates WHERE id = 1"))
+        assertTrue("merchant_confident" in columnNames("candidates"))
+    }
+
+    @Test
+    fun `migrar de v4 a v5 crea la cola sin tocar datos financieros`() {
+        createV4WithData()
+        val expensesBefore = rows("SELECT * FROM expenses ORDER BY id")
+        val candidatesBefore = rows("SELECT * FROM candidates ORDER BY id")
+        val activityBefore = rows("SELECT * FROM activity_log ORDER BY id")
+
+        migrate(4)
+
+        assertEquals(expensesBefore, rows("SELECT * FROM expenses ORDER BY id"))
+        assertEquals(candidatesBefore, rows("SELECT * FROM candidates ORDER BY id"))
+        assertEquals(activityBefore, rows("SELECT * FROM activity_log ORDER BY id"))
+        assertTrue("notification_analysis_queue" in schemaTables)
+        assertEquals(0L, count("SELECT COUNT(*) FROM notification_analysis_queue"))
+    }
+
+    @Test
+    fun `migrar de v1 a v5 agrega description, merchant_confident y cola sin perder datos`() {
         createV1WithData()
         val gastosAntes = rows("SELECT * FROM expenses ORDER BY id")
 
@@ -294,7 +377,7 @@ class DbMigrationTest {
         assertEquals(CatalogSeedV3.categories, catalogFromDb())
     }
 
-    // --- misma base que una instalacion nueva ----------------------------------
+    // --- misma base que una instalacion nueva v5 -------------------------------
 
     @Test
     fun `una base migrada tiene el mismo esquema que una instalacion nueva, partiendo de cualquier v1 o v2`() {
@@ -309,6 +392,8 @@ class DbMigrationTest {
                 "v1" to Pair(::createV1WithData, 1),
                 "v2 migrada con ALTER" to Pair(::createV2ByAlterWithData, 2),
                 "v2 creada por onCreate" to Pair(::createV2FromScratchWithData, 2),
+                "v3 con catalogo" to Pair(::createV3WithData, 3),
+                "v4 con merchant_confident" to Pair(::createV4WithData, 4),
             ).forEach { (origen, par) ->
                 val (crear, version) = par
                 reopen()
@@ -323,13 +408,32 @@ class DbMigrationTest {
     }
 
     @Test
-    fun `una instalacion nueva crea las cuatro tablas y siembra las categorias vigentes`() {
+    fun `una instalacion nueva crea las cinco tablas y merchant_confident`() {
         create(CatalogDefaults.categories)
 
         val tablas = rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
             .map { it[0] }
-        assertEquals(listOf("activity_log", "candidates", "catalog_entries", "expenses"), tablas)
+        assertEquals(listOf("activity_log", "candidates", "catalog_entries", "expenses", "notification_analysis_queue"), tablas)
         assertEquals(CatalogDefaults.categories, catalogFromDb())
+        assertTrue("merchant_confident" in columnNames("candidates"))
+    }
+
+    @Test
+    fun `la cola persistente tiene los campos de entrada, estado y auditoria`() {
+        create(CatalogDefaults.categories)
+
+        assertEquals(
+            setOf(
+                "id", "event_key", "package_name", "application_name", "title",
+                "notification_text", "big_text", "posted_at", "parser_amount",
+                "parser_currency", "parser_merchant", "parser_merchant_confident",
+                "parser_id", "parser_confidence", "status", "attempts", "last_error",
+                "model_version", "decision", "movement", "result_amount",
+                "result_currency", "result_merchant", "occurred_at", "reasons",
+                "created_at", "updated_at",
+            ),
+            columnNames("notification_analysis_queue"),
+        )
     }
 
     // --- la regla del ADR 0005: solo aditivo -----------------------------------
@@ -368,6 +472,8 @@ class DbMigrationTest {
             Triple("v1", ::createV1WithData, 1),
             Triple("v2 migrada con ALTER", ::createV2ByAlterWithData, 2),
             Triple("v2 creada por onCreate", ::createV2FromScratchWithData, 2),
+            Triple("v3 con catalogo", ::createV3WithData, 3),
+            Triple("v4 con merchant_confident", ::createV4WithData, 4),
         )
         origenes.forEach { (origen, crear, version) ->
             reopen()
@@ -388,11 +494,16 @@ class DbMigrationTest {
 
     @Test
     fun `se puede migrar desde cada version anterior y no hay un hueco entre versiones`() {
-        // Si alguien sube VERSION a 4 y agrega el bloque `oldVersion < 4` pero se olvida de
+        // Si alguien sube VERSION y agrega un bloque `oldVersion < N` pero se olvida de
         // que una base v1 tambien debe pasar por el, este test (que recorre todas) lo ve.
         for (oldVersion in 1 until DbSchema.VERSION) {
             reopen()
-            if (oldVersion == 1) createV1WithData() else createV2ByAlterWithData()
+            when (oldVersion) {
+                1 -> createV1WithData()
+                2 -> createV2ByAlterWithData()
+                3 -> createV3WithData()
+                4 -> createV4WithData()
+            }
 
             migrate(oldVersion)
 
@@ -402,8 +513,8 @@ class DbMigrationTest {
     }
 
     @Test
-    fun `la version del esquema es la 3 (si cambia, hay que agregar su bloque y su test)`() {
-        assertEquals(3, DbSchema.VERSION)
+    fun `la version del esquema es la 5 (si cambia, hay que agregar su bloque y su test)`() {
+        assertEquals(5, DbSchema.VERSION)
     }
 
     // --- transaccion: lo que garantiza Android y la migracion necesita ------------
@@ -417,6 +528,8 @@ class DbMigrationTest {
                 if (sql.startsWith("INSERT")) throw IllegalStateException("fallo simulado del seed")
                 real.exec(sql, args)
             }
+            override fun hasColumn(tableName: String, columnName: String): Boolean =
+                real.hasColumn(tableName, columnName)
         }
 
         try {
