@@ -286,7 +286,7 @@ runtime acepte el esquema JSON de la salida (si lo rechaza, reintenta sin restri
 ### Chat con la IA
 
 El ícono ✨ de la barra superior abre un chat a pantalla completa con el modelo local (requiere el modelo instalado). Sirve de asistente rápido:
-consultar ("cuánto gasté ayer", "gastos de la semana pasada"), hablar de un gasto ("contame del último") y cargar, editar o borrar.
+consultar ("cuánto gasté ayer", "gastos de la semana pasada"), hablar de un gasto ("contame del último") y cargar, editar o borrar gastos, y también crear, renombrar o borrar categorías. Una categoría con gastos no se borra: se propone desactivarla (como en Categorías); la de respaldo ("Otro") no se toca. Las preguntas como "¿qué podés hacer?" las responde la app con un texto fijo, no el modelo.
 
 - **El modelo solo interpreta.** La app resuelve a qué gasto se refiere, calcula los totales con sus propios datos (el modelo no mira la base) y
   calcula las fechas de los períodos; el modelo elige el período, no las fechas.
@@ -296,7 +296,7 @@ consultar ("cuánto gasté ayer", "gastos de la semana pasada"), hablar de un ga
 - **Contexto solo dentro del chat abierto**: recuerda lo hablado y la propuesta pendiente ("no, era 20000"), en memoria; al salir y volver es un chat
   nuevo. No hay historial entre chats.
 - Un solo motor del modelo se comparte con el análisis de avisos (los pesos ocupan ~2,6 GB: dos copias no caben).
-- Límites: no cambia la fecha de un gasto ya cargado; el modelo puede heredar el período de la pregunta anterior (la respuesta siempre muestra el
+- Límites: no cambia el color de una categoría ni la fecha de un gasto ya cargado; el modelo puede heredar el período de la pregunta anterior (la respuesta siempre muestra el
   rango usado).
 
 ## Instalación
