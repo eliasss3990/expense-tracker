@@ -50,7 +50,8 @@ android {
             // arquitecturas queda igual, asi que nada cambia en los dispositivos donde ya se instalaba. El build
             // de debug las conserva todas.
             ndk {
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86")
+                // addAll y no `+=`: abiFilters es un Set de solo lectura y `+=` es ambiguo (plus/plusAssign).
+                abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86"))
             }
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
