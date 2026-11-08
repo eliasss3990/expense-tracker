@@ -44,6 +44,7 @@ import com.eliasgonzalez.expensetracker.data.analysis.SharedPreferencesAnalysisM
 import com.eliasgonzalez.expensetracker.data.local.AndroidSqlDatabase
 import com.eliasgonzalez.expensetracker.data.local.LocalAnalysisQueueRepository
 import com.eliasgonzalez.expensetracker.data.local.LocalDecisionAuditRepository
+import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisModeStore
 import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisQueueRepository
 import com.eliasgonzalez.expensetracker.domain.analysis.CandidateAnnouncer
 import com.eliasgonzalez.expensetracker.domain.analysis.DecideRegistration
@@ -54,6 +55,7 @@ import com.eliasgonzalez.expensetracker.domain.usecase.AutoRegisterExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.HandleDetectedNotification
 import com.eliasgonzalez.expensetracker.domain.usecase.ListRecentDecisions
 import com.eliasgonzalez.expensetracker.domain.usecase.ProcessAnalysisQueue
+import com.eliasgonzalez.expensetracker.domain.usecase.RecoverDiscarded
 import com.eliasgonzalez.expensetracker.domain.usecase.ResolveCategory
 import com.eliasgonzalez.expensetracker.notification.AndroidCandidateAnnouncer
 import com.eliasgonzalez.expensetracker.notification.AndroidReviewNoticeAnnouncer
@@ -161,7 +163,7 @@ class AppContainer(context: Context) {
     private val decisionAudit: DecisionAuditRepository = LocalDecisionAuditRepository(sqlDatabase)
     val localModelManager: LocalModelManager = DownloadManagerModelManager(context.applicationContext, Gemma4E2B)
     private val transactionInterpreter = LiteRtTransactionInterpreter(context.applicationContext, Gemma4E2B, localModelManager)
-    val analysisModeProvider = SharedPreferencesAnalysisModeProvider(context.applicationContext)
+    val analysisModeStore: AnalysisModeStore = SharedPreferencesAnalysisModeProvider(context.applicationContext)
     private val candidateAnnouncer: CandidateAnnouncer = AndroidCandidateAnnouncer(context.applicationContext)
 
     private val autoRegisterExpense = AutoRegisterExpense(
@@ -181,7 +183,7 @@ class AppContainer(context: Context) {
         noticeAnnouncer = AndroidReviewNoticeAnnouncer(context.applicationContext),
         modelAvailability = localModelManager,
         audit = decisionAudit,
-        modeProvider = analysisModeProvider,
+        modeProvider = analysisModeStore,
         scheduleRetry = { delayMillis -> analysisRetryScheduler.schedule(delayMillis) },
     )
     val handleDetectedNotification = HandleDetectedNotification(
@@ -189,11 +191,12 @@ class AppContainer(context: Context) {
         createCandidate = createCandidate,
         findPendingCandidate = findPendingCandidate,
         announcer = candidateAnnouncer,
-        modeProvider = analysisModeProvider,
+        modeProvider = analysisModeStore,
         modelAvailability = localModelManager,
         onQueued = { appScope.launch(analysisExceptionHandler) { processAnalysisQueue.drain() } },
     )
     val listRecentDecisions = ListRecentDecisions(decisionAudit)
+    val recoverDiscarded = RecoverDiscarded(decisionAudit, createCandidate, findPendingCandidate, candidateAnnouncer)
 
     // Una excepcion en el analisis no debe cerrar la app: se registra y el item se reintenta.
     private val analysisExceptionHandler = kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
