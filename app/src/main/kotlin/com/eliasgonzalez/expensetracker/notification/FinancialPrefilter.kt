@@ -19,9 +19,14 @@ object FinancialPrefilter {
         "purchase", "payment", "paid", "transfer", "debit", "credit", "card", "withdraw", "refund",
     )
 
-    fun mentionsMoney(context: NotificationContext): Boolean {
+    /**
+     * [requireFigure]: exige una cifra de dinero (no basta una palabra como "pago" o "tarjeta"). Para buzones como
+     * Gmail: un correo que solo habla de pagos, sin ninguna cifra, no puede ser un gasto que se pueda registrar.
+     */
+    fun mentionsMoney(context: NotificationContext, requireFigure: Boolean = false): Boolean {
         val body = "${context.title} ${context.text} ${context.bigText}"
         if (amount.containsMatchIn(body)) return true
+        if (requireFigure) return false
         val lower = body.lowercase()
         return hints.any { it in lower }
     }

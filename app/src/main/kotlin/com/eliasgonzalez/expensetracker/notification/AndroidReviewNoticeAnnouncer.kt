@@ -34,12 +34,15 @@ class AndroidReviewNoticeAnnouncer(context: Context) : ReviewNoticeAnnouncer {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(open)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .build()
         val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
+        // Un id por app de origen: si llegan varios, se reemplaza el aviso en vez de apilar uno nuevo cada vez.
+        manager.notify(NOTICE_ID_BASE + (sourceApp.hashCode() and 0xFFFF), notification)
     }
 
     private companion object {
         const val NOTICE_REQUEST_CODE = 7001
+        const val NOTICE_ID_BASE = 0x4E000000
     }
 }
