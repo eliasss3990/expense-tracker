@@ -91,7 +91,9 @@ internal object DbSchema {
             expense_id INTEGER,
             candidate_id INTEGER,
             interpretations TEXT NOT NULL,
-            error_class TEXT
+            error_class TEXT,
+            category_id TEXT,
+            category_source TEXT
         )
     """.trimIndent()
 

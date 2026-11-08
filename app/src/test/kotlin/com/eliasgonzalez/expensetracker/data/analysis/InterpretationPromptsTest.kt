@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.data.analysis
 
+import com.eliasgonzalez.expensetracker.domain.analysis.CategoryOption
 import com.eliasgonzalez.expensetracker.domain.analysis.InterpretationPass
 import com.eliasgonzalez.expensetracker.domain.analysis.InterpretationRequest
 import com.eliasgonzalez.expensetracker.domain.analysis.NotificationSnapshot
@@ -52,5 +53,20 @@ class InterpretationPromptsTest {
     @Test
     fun `ambas instrucciones avisan que el contenido no es confiable`() {
         for (p in InterpretationPass.entries) assertTrue("no confiable" in InterpretationPrompts.system(p))
+    }
+
+    @Test
+    fun `las categorias del catalogo viajan en ambas pasadas y el prompt pide elegir solo entre ellas`() {
+        val cats = listOf(CategoryOption("FUEL", "Combustible"), CategoryOption("FOOD", "Comida"))
+        for (pass in InterpretationPass.entries) {
+            val prompt = InterpretationPrompts.user(request(pass, ParserEvidence.NoParser).copy(categories = cats))
+            assertTrue(pass.name, "\"id\":\"FUEL\"" in prompt && "Combustible" in prompt)
+            assertTrue("categorias_disponibles" in InterpretationPrompts.system(pass))
+        }
+    }
+
+    @Test
+    fun `sin categorias no se agrega la lista`() {
+        assertFalse("categorias_disponibles" in InterpretationPrompts.user(request(InterpretationPass.PRIMARY, ParserEvidence.NoParser)))
     }
 }

@@ -24,6 +24,8 @@ data class TransactionInterpretation(
     val amounts: List<AmountMention>,
     val merchant: String?,
     val doubts: Set<ModelDoubt> = emptySet(),
+    /** Id de una categoria de la lista que se le dio al modelo, o null si ninguna corresponde. */
+    val categoryId: String? = null,
 ) {
     /** El unico importe con rol OPERATION, o null si no hay exactamente uno. */
     val operationAmount: AmountMention?
@@ -33,10 +35,14 @@ data class TransactionInterpretation(
 /** Pasadas independientes: la segunda re-extrae con otro enfoque para contrastar la primera. */
 enum class InterpretationPass { PRIMARY, CROSS_CHECK }
 
+/** Una categoria que el usuario puede elegir hoy: es lo unico entre lo que el modelo puede clasificar. */
+data class CategoryOption(val id: String, val label: String)
+
 data class InterpretationRequest(
     val notification: NotificationSnapshot,
     val parser: ParserEvidence,
     val pass: InterpretationPass,
+    val categories: List<CategoryOption> = emptyList(),
 )
 
 data class InterpretationResult(

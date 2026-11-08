@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.data.local
 import com.eliasgonzalez.expensetracker.domain.analysis.AmountMention
 import com.eliasgonzalez.expensetracker.domain.analysis.AmountRole
 import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisMode
+import com.eliasgonzalez.expensetracker.domain.analysis.CategorySource
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAudit
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionEffect
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionReason
@@ -45,11 +46,12 @@ class LocalDecisionAuditRepositoryTest {
                 TransactionInterpretation(
                     MoneyDirection.OUTGOING, OperationStatus.PENDING,
                     listOf(AmountMention(85_000, AmountRole.OPERATION, "PYG"), AmountMention(1_200_000, AmountRole.BALANCE, null)),
-                    "Tienda", setOf(ModelDoubt.AMBIGUOUS_STATUS),
+                    "Tienda", setOf(ModelDoubt.AMBIGUOUS_STATUS), "GROCERIES",
                 ),
                 InterpretationPass.PRIMARY, "gemma-test", 321,
             )
         ),
+        categoryId = "GROCERIES", categorySource = CategorySource.MEMORY,
     )
 
     @Test

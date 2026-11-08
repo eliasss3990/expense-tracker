@@ -19,7 +19,10 @@ import com.eliasgonzalez.expensetracker.domain.analysis.ParserSnapshot
 import com.eliasgonzalez.expensetracker.domain.analysis.SourceTrust
 import com.eliasgonzalez.expensetracker.domain.analysis.TransactionInterpretation
 import com.eliasgonzalez.expensetracker.domain.analysis.TransactionInterpreter
+import com.eliasgonzalez.expensetracker.domain.catalog.CatalogDefaults
+import com.eliasgonzalez.expensetracker.domain.analysis.CategorySource
 import com.eliasgonzalez.expensetracker.domain.log.AppLog
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.log.LogLevel
 import com.eliasgonzalez.expensetracker.domain.log.LogSink
 import com.eliasgonzalez.expensetracker.domain.model.CandidateStatus
@@ -40,6 +43,7 @@ class ProcessAnalysisQueueTest {
     private val expenses = FakeExpenseRepository()
     private val activity = FakeActivityRepository()
     private val queue = FakeAnalysisQueue()
+    private val catalog = FakeCatalogRepository(CatalogDefaults.categories)
     private val audit = FakeDecisionAudit()
     private val candidateMutex = Mutex()
     private val expenseMutex = Mutex()
@@ -93,6 +97,7 @@ class ProcessAnalysisQueueTest {
             createCandidate = CreateCandidate(candidates, activity, candidateMutex),
             findPendingCandidate = FindPendingCandidate(candidates),
             autoRegister = AutoRegisterExpense(candidates, expenses, register, candidateMutex, awaitReady),
+            resolveCategory = ResolveCategory(expenses, catalog),
             announcer = announcer,
             audit = audit,
             modeProvider = { mode },
@@ -245,6 +250,75 @@ class ProcessAnalysisQueueTest {
         p.drain()
         p.drain()
         assertEquals(1, expenses.expenses.value.size)
+    }
+
+    // --- categoria ---
+
+    private val withCategory = purchase.copy(categoryId = CategoryIds.GROCERIES)
+
+    @Test
+    fun `el gasto auto-registrado lleva la categoria del modelo y se audita la fuente`() = runTest {
+        queue.enqueue(event())
+        processor(interpreter({ withCategory })).drain()
+
+        assertEquals(CategoryIds.GROCERIES, expenses.expenses.value.single().categoryId)
+        val a = audit.entries.single()
+        assertEquals(CategoryIds.GROCERIES, a.categoryId)
+        assertEquals(CategorySource.MODEL, a.categorySource)
+    }
+
+    @Test
+    fun `si el usuario ya categorizo ese comercio se respeta su historial sobre el modelo`() = runTest {
+        expenses.save(com.eliasgonzalez.expensetracker.domain.model.Expense(
+            amount = 1, merchant = "Supermercado Real", categoryId = CategoryIds.SHOPPING, occurredAt = 1, createdAt = 1,
+            source = com.eliasgonzalez.expensetracker.domain.model.ExpenseSource.MANUAL,
+        ))
+        queue.enqueue(event())
+        processor(interpreter({ withCategory })).drain()
+
+        val registered = expenses.expenses.value.single { it.sourceReference != null }
+        assertEquals(CategoryIds.SHOPPING, registered.categoryId)
+        assertEquals(CategorySource.MEMORY, audit.entries.single().categorySource)
+    }
+
+    @Test
+    fun `un candidato por duda tambien sugiere la categoria`() = runTest {
+        queue.enqueue(event())
+        processor(interpreter({ withCategory.copy(status = OperationStatus.PENDING) })).drain()
+
+        assertEquals(CategoryIds.GROCERIES, candidates.candidates.value.single().categorySuggestion)
+    }
+
+    @Test
+    fun `sin categoria del modelo ni historial queda en el comodin`() = runTest {
+        queue.enqueue(event())
+        processor(interpreter({ purchase })).drain()
+
+        assertEquals(CategoryIds.OTHER, expenses.expenses.value.single().categoryId)
+        assertEquals(CategorySource.DEFAULT, audit.entries.single().categorySource)
+    }
+
+    @Test
+    fun `al modelo se le pasan las categorias activas del catalogo en ambas pasadas`() = runTest {
+        queue.enqueue(event())
+        val seen = mutableListOf<List<String>>()
+        val spying = object : TransactionInterpreter {
+            override suspend fun interpret(request: InterpretationRequest): InterpretationResult {
+                seen += request.categories.map { it.id }
+                return InterpretationResult(purchase, request.pass, "test-model", 1)
+            }
+        }
+        processor(spying).drain()
+
+        assertEquals(2, seen.size)
+        assertTrue(seen.all { CategoryIds.FOOD in it && CategoryIds.OTHER !in it })
+    }
+
+    @Test
+    fun `un descarte no lleva categoria`() = runTest {
+        queue.enqueue(event("Se reembolso Gs. 85.000"))
+        processor(interpreter({ refund.copy(categoryId = CategoryIds.FOOD) })).drain()
+        assertNull(audit.entries.single().categoryId)
     }
 
     // --- el log explica el por que sin datos financieros ---

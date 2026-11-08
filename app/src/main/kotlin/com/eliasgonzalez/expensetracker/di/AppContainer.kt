@@ -53,6 +53,7 @@ import com.eliasgonzalez.expensetracker.domain.usecase.AutoRegisterExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.HandleDetectedNotification
 import com.eliasgonzalez.expensetracker.domain.usecase.ListRecentDecisions
 import com.eliasgonzalez.expensetracker.domain.usecase.ProcessAnalysisQueue
+import com.eliasgonzalez.expensetracker.domain.usecase.ResolveCategory
 import com.eliasgonzalez.expensetracker.notification.AndroidCandidateAnnouncer
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -163,6 +164,7 @@ class AppContainer(context: Context) {
     private val autoRegisterExpense = AutoRegisterExpense(
         candidateRepository, expenseRepository, registerExpense, candidateWriteMutex, awaitHydrated,
     )
+    private val resolveCategory = ResolveCategory(expenseRepository, catalogRepository, awaitHydrated)
     private val processAnalysisQueue = ProcessAnalysisQueue(
         queue = analysisQueue,
         interpreter = transactionInterpreter,
@@ -170,6 +172,7 @@ class AppContainer(context: Context) {
         createCandidate = createCandidate,
         findPendingCandidate = findPendingCandidate,
         autoRegister = autoRegisterExpense,
+        resolveCategory = resolveCategory,
         announcer = candidateAnnouncer,
         audit = decisionAudit,
         modeProvider = analysisModeProvider,

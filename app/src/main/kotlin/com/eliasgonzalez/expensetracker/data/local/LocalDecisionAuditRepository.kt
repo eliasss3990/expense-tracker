@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.data.local
 
 import com.eliasgonzalez.expensetracker.data.analysis.InterpretationCodec
 import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisMode
+import com.eliasgonzalez.expensetracker.domain.analysis.CategorySource
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAudit
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAuditRepository
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionEffect
@@ -16,12 +17,13 @@ internal class LocalDecisionAuditRepository(private val db: SqlDatabase) : Decis
         withContext(Dispatchers.IO) {
             db.insert(
                 """INSERT INTO decision_audit (event_key, decided_at, mode, source_app, outcome, reasons, effect,
-                    expense_id, candidate_id, interpretations, error_class)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    expense_id, candidate_id, interpretations, error_class, category_id, category_source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 listOf(
                     audit.eventKey, audit.decidedAt, audit.mode.name, audit.sourceApp, audit.outcome?.name,
                     audit.reasons.joinToString(",") { it.name }, audit.effect.name, audit.expenseId, audit.candidateId,
                     InterpretationCodec.encode(audit.interpretations), audit.errorClass,
+                    audit.categoryId, audit.categorySource?.name,
                 ),
             )
         }
@@ -42,6 +44,8 @@ internal class LocalDecisionAuditRepository(private val db: SqlDatabase) : Decis
                 candidateId = row.longOrNull("candidate_id"),
                 interpretations = InterpretationCodec.decode(row.string("interpretations")),
                 errorClass = row.stringOrNull("error_class"),
+                categoryId = row.stringOrNull("category_id"),
+                categorySource = row.stringOrNull("category_source")?.let { n -> CategorySource.entries.firstOrNull { it.name == n } },
             )
         }
     }

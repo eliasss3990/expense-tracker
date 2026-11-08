@@ -31,6 +31,7 @@ internal object ModelOutputParser {
             status = enumOr(json.optString("status"), OperationStatus.UNKNOWN),
             amounts = amounts(json.optJSONArray("amounts")),
             merchant = json.optString("merchant").trim().takeIf { it.isNotEmpty() && !it.equals("null", true) },
+            categoryId = json.optString("category").trim().takeIf { it.isNotEmpty() && !it.equals("null", true) },
             doubts = (json.optJSONArray("doubts") ?: JSONArray()).let { arr ->
                 (0 until arr.length()).map { enumOr(arr.optString(it), ModelDoubt.OTHER) }.toSet()
             },

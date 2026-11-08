@@ -41,6 +41,7 @@ class AutoRegisterExpense(
         merchantConfident: Boolean,
         occurredAt: Long,
         sourceApp: String,
+        categoryId: String,
     ): AutoRegisterResult {
         if (!awaitReady()) return AutoRegisterResult.NotReady
         val reference = referenceFor(eventKey)
@@ -55,6 +56,7 @@ class AutoRegisterExpense(
                         amount = amount,
                         currency = currency,
                         merchant = merchant,
+                        categoryId = categoryId,
                         occurredAt = occurredAt,
                         createdAt = now(),
                         source = ExpenseSource.NOTIFICATION,

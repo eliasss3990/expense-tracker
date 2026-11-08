@@ -39,6 +39,9 @@ data class DecisionAudit(
     val interpretations: List<InterpretationResult>,
     /** Clase del error cuando no hubo interpretacion (sin mensajes: pueden llevar datos). */
     val errorClass: String? = null,
+    /** Categoria asignada y de donde salio (null si el aviso no llego a registrarse ni a candidato). */
+    val categoryId: String? = null,
+    val categorySource: CategorySource? = null,
 )
 
 interface DecisionAuditRepository {

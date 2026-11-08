@@ -85,4 +85,13 @@ class ModelOutputParserTest {
             }
         }
     }
+
+    @Test
+    fun `lee la categoria y trata null o vacio como ninguna`() {
+        fun cat(v: String) = ModelOutputParser.parse("""{"direction":"OUTGOING","status":"COMPLETED","amounts":[],"category":$v,"doubts":[]}""").categoryId
+        assertEquals("FUEL", cat("\"FUEL\""))
+        assertNull(cat("null"))
+        assertNull(cat("\"\""))
+        assertNull(cat("\"null\""))
+    }
 }

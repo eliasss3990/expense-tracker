@@ -5,6 +5,7 @@ import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisMode
 import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisModeProvider
 import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisEventKey
 import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisQueueRepository
+import com.eliasgonzalez.expensetracker.domain.analysis.CategoryChoice
 import com.eliasgonzalez.expensetracker.domain.analysis.CandidateAnnouncer
 import com.eliasgonzalez.expensetracker.domain.analysis.DecideRegistration
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAudit
@@ -20,6 +21,7 @@ import com.eliasgonzalez.expensetracker.domain.analysis.RegistrationOutcome
 import com.eliasgonzalez.expensetracker.domain.analysis.RegistrationPolicy
 import com.eliasgonzalez.expensetracker.domain.analysis.TransactionInterpreter
 import com.eliasgonzalez.expensetracker.domain.log.AppLog
+import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import kotlinx.coroutines.CancellationException
@@ -45,6 +47,7 @@ class ProcessAnalysisQueue(
     private val createCandidate: CreateCandidate,
     private val findPendingCandidate: FindPendingCandidate,
     private val autoRegister: AutoRegisterExpense,
+    private val resolveCategory: ResolveCategory,
     private val announcer: CandidateAnnouncer,
     private val audit: DecisionAuditRepository,
     private val modeProvider: AnalysisModeProvider,
@@ -84,8 +87,13 @@ class ProcessAnalysisQueue(
         }
 
         val decision = decide(event.notification, event.parser, results, RegistrationPolicy(event.trust, requireCrossCheck))
+        val category = if (decision.outcome == RegistrationOutcome.DISCARD) {
+            null
+        } else {
+            resolveCategory.resolve(decision.merchant, results.first().interpretation.categoryId)
+        }
         val effect = try {
-            apply(mode, event, decision)
+            apply(mode, event, decision, category)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -98,15 +106,16 @@ class ProcessAnalysisQueue(
             AppLog.w(TAG, "evento=${AnalysisEventKey.short(event.key)} base sin cargar, se reintenta")
             return false
         }
-        record(event, mode, decision, effect, results, null)
+        record(event, mode, decision, effect, results, null, category)
         queue.markDone(item.id)
         return true
     }
 
     private suspend fun interpret(event: AnalysisEvent): List<InterpretationResult> {
-        val primary = interpreter.interpret(InterpretationRequest(event.notification, event.parser, InterpretationPass.PRIMARY))
+        val categories = resolveCategory.options()
+        val primary = interpreter.interpret(InterpretationRequest(event.notification, event.parser, InterpretationPass.PRIMARY, categories))
         if (!requireCrossCheck) return listOf(primary)
-        val cross = interpreter.interpret(InterpretationRequest(event.notification, event.parser, InterpretationPass.CROSS_CHECK))
+        val cross = interpreter.interpret(InterpretationRequest(event.notification, event.parser, InterpretationPass.CROSS_CHECK, categories))
         return listOf(primary, cross)
     }
 
@@ -140,17 +149,22 @@ class ProcessAnalysisQueue(
     }
 
     /** null = no terminal (hay que reintentar). */
-    private suspend fun apply(mode: AnalysisMode, event: AnalysisEvent, decision: RegistrationDecision): AppliedEffect? {
+    private suspend fun apply(
+        mode: AnalysisMode,
+        event: AnalysisEvent,
+        decision: RegistrationDecision,
+        category: CategoryChoice?,
+    ): AppliedEffect? {
         if (mode == AnalysisMode.SHADOW) return AppliedEffect(DecisionEffect.SHADOW_ONLY)
         return when (decision.outcome) {
             RegistrationOutcome.DISCARD -> AppliedEffect(DecisionEffect.DISCARDED)
             RegistrationOutcome.AUTO_REGISTER ->
-                if (mode == AnalysisMode.AUTOMATIC) autoRegisterEffect(event, decision) else candidateEffect(event, decision)
-            RegistrationOutcome.REVIEW -> candidateEffect(event, decision)
+                if (mode == AnalysisMode.AUTOMATIC) autoRegisterEffect(event, decision, category!!) else candidateEffect(event, decision, category!!)
+            RegistrationOutcome.REVIEW -> candidateEffect(event, decision, category!!)
         }
     }
 
-    private suspend fun autoRegisterEffect(event: AnalysisEvent, decision: RegistrationDecision): AppliedEffect? {
+    private suspend fun autoRegisterEffect(event: AnalysisEvent, decision: RegistrationDecision, category: CategoryChoice): AppliedEffect? {
         val result = autoRegister(
             eventKey = event.key,
             amount = decision.amount!!,
@@ -159,6 +173,7 @@ class ProcessAnalysisQueue(
             merchantConfident = decision.merchantConfident,
             occurredAt = event.notification.timestamp,
             sourceApp = event.notification.applicationName,
+            categoryId = category.categoryId,
         )
         return when (result) {
             is AutoRegisterResult.Registered -> AppliedEffect(DecisionEffect.AUTO_REGISTERED, expenseId = result.expenseId)
@@ -167,7 +182,7 @@ class ProcessAnalysisQueue(
         }
     }
 
-    private suspend fun candidateEffect(event: AnalysisEvent, decision: RegistrationDecision): AppliedEffect {
+    private suspend fun candidateEffect(event: AnalysisEvent, decision: RegistrationDecision, category: CategoryChoice): AppliedEffect {
         val amount = decision.amount?.takeIf { it > 0 }
         val currency = decision.currency?.takeIf { it.length == 3 }
         if (amount == null || currency == null) return AppliedEffect(DecisionEffect.UNUSABLE)
@@ -179,6 +194,7 @@ class ProcessAnalysisQueue(
             merchant ?: event.notification.applicationName,
             merchant != null && decision.merchantConfident,
             parserId,
+            category.categoryId,
         )
         val id = createAndAnnounce(candidate) ?: return AppliedEffect(DecisionEffect.DUPLICATE)
         return AppliedEffect(DecisionEffect.CANDIDATE_CREATED, candidateId = id)
@@ -191,11 +207,13 @@ class ProcessAnalysisQueue(
         merchant: String,
         merchantConfident: Boolean,
         parserId: String,
+        categoryId: String = CategoryIds.OTHER,
     ) = ExpenseCandidate(
         amount = amount,
         currency = currency,
         merchant = merchant,
         merchantConfident = merchantConfident,
+        categorySuggestion = categoryId,
         occurredAt = event.notification.timestamp,
         detectedAt = event.notification.timestamp,
         sourceType = ExpenseSource.NOTIFICATION,
@@ -224,6 +242,7 @@ class ProcessAnalysisQueue(
         applied: AppliedEffect,
         results: List<InterpretationResult>,
         errorClass: String?,
+        category: CategoryChoice? = null,
     ) {
         val entry = DecisionAudit(
             eventKey = event.key,
@@ -237,6 +256,8 @@ class ProcessAnalysisQueue(
             candidateId = applied.candidateId,
             interpretations = results,
             errorClass = errorClass,
+            categoryId = category?.categoryId,
+            categorySource = category?.source,
         )
         audit.record(entry)
         AppLog.i(
@@ -244,7 +265,7 @@ class ProcessAnalysisQueue(
             "evento=${AnalysisEventKey.short(event.key)} modo=$mode app=${event.notification.packageName} " +
                 "decision=${decision?.outcome ?: "-"} motivos=${entry.reasons.joinToString(",").ifEmpty { "-" }} " +
                 "efecto=${applied.effect} gasto=${applied.expenseId ?: "-"} candidato=${applied.candidateId ?: "-"} " +
-                "modelo=${results.firstOrNull()?.modelId ?: "-"} ms=${results.joinToString("+") { it.durationMillis.toString() }.ifEmpty { "-" }}" +
+                "categoria=${category?.let { "${it.categoryId}/${it.source}" } ?: "-"} modelo=${results.firstOrNull()?.modelId ?: "-"} ms=${results.joinToString("+") { it.durationMillis.toString() }.ifEmpty { "-" }}" +
                 (errorClass?.let { " error=$it" } ?: ""),
         )
     }

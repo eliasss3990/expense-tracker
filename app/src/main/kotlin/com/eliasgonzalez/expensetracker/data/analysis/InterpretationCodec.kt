@@ -35,6 +35,7 @@ internal object InterpretationCodec {
         put("direction", r.interpretation.direction.name)
         put("status", r.interpretation.status.name)
         put("merchant", r.interpretation.merchant ?: JSONObject.NULL)
+        put("category", r.interpretation.categoryId ?: JSONObject.NULL)
         put("doubts", JSONArray(r.interpretation.doubts.map { it.name }))
         put(
             "amounts",
@@ -62,6 +63,7 @@ internal object InterpretationCodec {
                     )
                 },
                 merchant = if (o.isNull("merchant")) null else o.optString("merchant").takeIf(String::isNotBlank),
+                categoryId = if (o.isNull("category")) null else o.optString("category").takeIf(String::isNotBlank),
                 doubts = (0 until doubts.length()).map { enumOr(doubts.getString(it), ModelDoubt.OTHER) }.toSet(),
             ),
             pass = enumOr(o.optString("pass"), InterpretationPass.PRIMARY),
