@@ -10,3 +10,8 @@ enum class AnalysisMode { SHADOW, ASSISTED, AUTOMATIC }
 fun interface AnalysisModeProvider {
     fun currentMode(): AnalysisMode
 }
+
+/** Lo que necesita la UI para cambiar el modo (el dominio solo lo lee, via [AnalysisModeProvider]). */
+interface AnalysisModeStore : AnalysisModeProvider {
+    fun setMode(mode: AnalysisMode)
+}
