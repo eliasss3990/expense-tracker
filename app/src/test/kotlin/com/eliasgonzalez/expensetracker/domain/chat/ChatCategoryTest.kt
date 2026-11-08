@@ -80,6 +80,14 @@ class ChatCategoryTest {
     }
 
     @Test
+    fun `si el modelo devuelve el id de la categoria en vez del nombre es la misma categoria`() {
+        val byId = proposal(say(ChatIntent.CategoryDelete("TRANSPORT"))) as ChatProposal.CategoryDelete
+        assertEquals("TRANSPORT", byId.entry.id)
+        val lower = proposal(say(ChatIntent.CategoryRename("food", "Alimentos"))) as ChatProposal.CategoryRename
+        assertEquals("FOOD", lower.before.id)
+    }
+
+    @Test
     fun `borrar una categoria sin gastos se propone y se borra al confirmar`() = runBlocking {
         val p = proposal(say(ChatIntent.CategoryDelete("Transporte"))) as ChatProposal.CategoryDelete
         assertEquals("TRANSPORT", p.entry.id)

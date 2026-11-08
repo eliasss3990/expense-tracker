@@ -146,7 +146,8 @@ class ChatAssistant(
         val needle = NumericTokens.normalizeForMatch(name)
         if (needle.isBlank()) return CategoryResolution.Missing(ChatReply.Clarify(ClarifyReason.CATEGORY_NOT_FOUND))
         val all = categories.categories()
-        val exact = all.filter { NumericTokens.normalizeForMatch(it.label) == needle }
+        // El prompt le muestra al modelo "ID (Nombre)": si devuelve el id en vez del nombre, es la misma categoria.
+        val exact = all.filter { it.id.equals(name.trim(), ignoreCase = true) || NumericTokens.normalizeForMatch(it.label) == needle }
         val hits = exact.ifEmpty { all.filter { NumericTokens.normalizeForMatch(it.label).contains(needle) } }
         return when {
             hits.isEmpty() -> CategoryResolution.Missing(ChatReply.Clarify(ClarifyReason.CATEGORY_NOT_FOUND, name.take(MAX_MERCHANT)))
