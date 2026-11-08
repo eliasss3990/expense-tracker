@@ -19,7 +19,14 @@ sealed interface ExpenseRef {
  * campos que necesita, y ninguna puede apuntar a "todos los gastos": un borrado o edicion siempre es de UN gasto.
  */
 sealed interface ChatIntent {
-    data class Query(val metric: ChatMetric, val from: LocalDate?, val to: LocalDate?, val categoryId: String?) : ChatIntent
+    data class Query(
+        val metric: ChatMetric,
+        val period: ChatPeriod,
+        /** Solo se usan con [ChatPeriod.CUSTOM]; en los demas periodos las fechas las calcula la app. */
+        val from: LocalDate?,
+        val to: LocalDate?,
+        val categoryId: String?,
+    ) : ChatIntent
     data class Describe(val ref: ExpenseRef) : ChatIntent
     data class Create(val amount: Long, val merchant: String, val categoryId: String?, val date: LocalDate?) : ChatIntent
     data class Edit(val ref: ExpenseRef, val field: EditableField, val newValue: String) : ChatIntent

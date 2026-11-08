@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.data.analysis
 
 import com.eliasgonzalez.expensetracker.domain.chat.ChatIntent
 import com.eliasgonzalez.expensetracker.domain.chat.ChatMetric
+import com.eliasgonzalez.expensetracker.domain.chat.ChatPeriod
 import com.eliasgonzalez.expensetracker.domain.chat.EditableField
 import com.eliasgonzalez.expensetracker.domain.chat.ExpenseRef
 import java.time.LocalDate
@@ -14,14 +15,22 @@ class ChatOutputParserTest {
 
     @Test
     fun `consulta con rango y categoria`() {
-        val i = parse("""{"action":"QUERY","metric":"SUM","from":"2026-11-01","to":"2026-11-30","category":"FOOD"}""")
-        assertEquals(ChatIntent.Query(ChatMetric.SUM, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30), "FOOD"), i)
+        val i = parse("""{"action":"QUERY","metric":"SUM","period":"CUSTOM","from":"2026-11-01","to":"2026-11-30","category":"FOOD"}""")
+        assertEquals(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30), "FOOD"), i)
     }
 
     @Test
     fun `ALL significa sin filtro de categoria`() {
-        val i = parse("""{"action":"QUERY","metric":"COUNT","from":"2026-11-08","to":"2026-11-08","category":"ALL"}""") as ChatIntent.Query
+        val i = parse("""{"action":"QUERY","metric":"COUNT","period":"TODAY","from":"","to":"","category":"ALL"}""") as ChatIntent.Query
         assertEquals(null, i.categoryId)
+    }
+
+    @Test
+    fun `el periodo lo elige el modelo y las fechas las calcula la app`() {
+        val q = parse("""{"action":"QUERY","metric":"COUNT","period":"THIS_WEEK","from":"","to":"","category":"ALL"}""") as ChatIntent.Query
+        assertEquals(ChatPeriod.THIS_WEEK, q.period); assertEquals(null, q.from); assertEquals(null, q.to)
+        assertTrue(parse("""{"action":"QUERY","metric":"SUM","period":"CUALQUIERA","from":"","to":"","category":"ALL"}""") is ChatIntent.Unreadable)
+        assertTrue(parse("""{"action":"QUERY","metric":"SUM","from":"","to":"","category":"ALL"}""") is ChatIntent.Unreadable)
     }
 
     @Test
@@ -67,14 +76,14 @@ class ChatOutputParserTest {
 
     @Test
     fun `lo que no se entiende es ilegible y nunca una accion`() {
-        for (bad in listOf("", "hola", "{", """{"action":"BORRAR_TODO"}""", """{"action":"QUERY","metric":"MAGIA"}""", """{"action":"EDIT","reference":"LAST","field":"COLOR","new_value":"x"}""", """{"action":"DELETE","reference":"ALL"}""")) {
+        for (bad in listOf("", "hola", "{", """{"action":"BORRAR_TODO"}""", """{"action":"QUERY","metric":"MAGIA","period":"ALL"}""", """{"action":"EDIT","reference":"LAST","field":"COLOR","new_value":"x"}""", """{"action":"DELETE","reference":"ALL"}""")) {
             assertTrue("debia ser ilegible: $bad", parse(bad) is ChatIntent.Unreadable)
         }
     }
 
     @Test
     fun `una fecha mal escrita se ignora en vez de romper`() {
-        val q = parse("""{"action":"QUERY","metric":"SUM","from":"ayer","to":"2026-11-08","category":"ALL"}""") as ChatIntent.Query
+        val q = parse("""{"action":"QUERY","metric":"SUM","period":"CUSTOM","from":"ayer","to":"2026-11-08","category":"ALL"}""") as ChatIntent.Query
         assertEquals(null, q.from); assertEquals(LocalDate.of(2026, 11, 8), q.to)
     }
 }

@@ -56,25 +56,36 @@ class ChatAssistantTest {
     @Test
     fun `una consulta suma solo el rango y la categoria pedidos`() {
         seed()
-        val r = ask(ChatIntent.Query(ChatMetric.SUM, LocalDate.of(2026, 11, 7), today, null)) as ChatReply.Summary
+        val r = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, LocalDate.of(2026, 11, 7), today, null)) as ChatReply.Summary
         assertEquals(92_000L, r.total); assertEquals(2, r.count)
-        val t = ask(ChatIntent.Query(ChatMetric.SUM, null, null, "TRANSPORT")) as ChatReply.Summary
+        val t = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, null, null, "TRANSPORT")) as ChatReply.Summary
         assertEquals(80_000L, t.total)
     }
 
     @Test
     fun `contar, promediar y listar salen de los datos reales`() {
         seed()
-        assertEquals(3, (ask(ChatIntent.Query(ChatMetric.COUNT, null, null, null)) as ChatReply.Summary).count)
-        assertEquals(40_666L, (ask(ChatIntent.Query(ChatMetric.AVERAGE, null, null, null)) as ChatReply.Summary).total)
-        val list = ask(ChatIntent.Query(ChatMetric.LIST, null, null, null)) as ChatReply.Listing
+        assertEquals(3, (ask(ChatIntent.Query(ChatMetric.COUNT, ChatPeriod.CUSTOM, null, null, null)) as ChatReply.Summary).count)
+        assertEquals(40_666L, (ask(ChatIntent.Query(ChatMetric.AVERAGE, ChatPeriod.CUSTOM, null, null, null)) as ChatReply.Summary).total)
+        val list = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.CUSTOM, null, null, null)) as ChatReply.Listing
         assertEquals(listOf("Cafe Central", "Shell", "Netflix"), list.items.map { it.merchant })
+    }
+
+    @Test
+    fun `esta semana en domingo incluye el gasto de hoy aunque el modelo no calcule fechas`() {
+        seed() // hoy = domingo 08/11: Netflix 01/11 (semana anterior), Shell 07/11 y Cafe hoy
+        val week = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.THIS_WEEK, null, null, null)) as ChatReply.Summary
+        assertEquals(92_000L, week.total); assertEquals(2, week.count)
+        assertEquals(LocalDate.of(2026, 11, 2), week.from); assertEquals(today, week.to)
+        // las fechas del modelo se ignoran fuera de CUSTOM: aunque invente un rango, manda el periodo
+        val ignored = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.ALL, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 1), null)) as ChatReply.Summary
+        assertEquals(3, ignored.count)
     }
 
     @Test
     fun `un rango invertido se pregunta y no se adivina`() {
         seed()
-        val r = ask(ChatIntent.Query(ChatMetric.SUM, today, LocalDate.of(2026, 11, 1), null))
+        val r = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, today, LocalDate.of(2026, 11, 1), null))
         assertEquals(ChatReply.Clarify(ClarifyReason.INVALID_RANGE), r)
     }
 

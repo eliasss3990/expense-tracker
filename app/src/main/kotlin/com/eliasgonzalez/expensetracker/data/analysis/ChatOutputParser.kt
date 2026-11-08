@@ -2,6 +2,7 @@ package com.eliasgonzalez.expensetracker.data.analysis
 
 import com.eliasgonzalez.expensetracker.domain.chat.ChatIntent
 import com.eliasgonzalez.expensetracker.domain.chat.ChatMetric
+import com.eliasgonzalez.expensetracker.domain.chat.ChatPeriod
 import com.eliasgonzalez.expensetracker.domain.chat.EditableField
 import com.eliasgonzalez.expensetracker.domain.chat.ExpenseRef
 import org.json.JSONObject
@@ -19,6 +20,7 @@ internal object ChatOutputParser {
             when (json.optString("action")) {
                 "QUERY" -> ChatIntent.Query(
                     metric = enumOrNull<ChatMetric>(json, "metric") ?: return ChatIntent.Unreadable("metric"),
+                    period = enumOrNull<ChatPeriod>(json, "period") ?: return ChatIntent.Unreadable("period"),
                     from = date(json, "from"), to = date(json, "to"),
                     categoryId = json.optString("category").takeIf { it.isNotBlank() && it != ChatSchema.ALL },
                 )

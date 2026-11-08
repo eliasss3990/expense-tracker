@@ -81,7 +81,7 @@ class ChatSessionTest {
     fun `cancelar descarta la propuesta, y una consulta en medio no la descarta`() {
         val s = newSession()
         s.say("anota 5000", ChatIntent.Create(5_000, "x", null, null))
-        s.say("cuanto gaste", ChatIntent.Query(ChatMetric.SUM, null, null, null))
+        s.say("cuanto gaste", ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, null, null, null))
         assertNotNull("una consulta no descarta la propuesta", s.pending)
         assertEquals(ChatReply.Cancelled, s.say("olvidalo", ChatIntent.Cancel))
         assertNull(s.pending)

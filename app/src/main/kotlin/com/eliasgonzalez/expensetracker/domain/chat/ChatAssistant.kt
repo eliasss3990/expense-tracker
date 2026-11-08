@@ -66,8 +66,7 @@ class ChatAssistant(
     }
 
     private fun query(q: ChatIntent.Query, today: LocalDate): ChatReply {
-        val from = q.from
-        val to = q.to
+        val (from, to) = q.period.resolve(today, q.from, q.to)
         if (from != null && to != null && from.isAfter(to)) return ChatReply.Clarify(ClarifyReason.INVALID_RANGE)
         val fromMs = from?.atStartOfDay(zone)?.toInstant()?.toEpochMilli() ?: Long.MIN_VALUE
         val toMs = to?.plusDays(1)?.atStartOfDay(zone)?.toInstant()?.toEpochMilli() ?: Long.MAX_VALUE

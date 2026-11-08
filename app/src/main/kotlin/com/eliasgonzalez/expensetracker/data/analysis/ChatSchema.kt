@@ -1,6 +1,7 @@
 package com.eliasgonzalez.expensetracker.data.analysis
 
 import com.eliasgonzalez.expensetracker.domain.analysis.CategoryOption
+import com.eliasgonzalez.expensetracker.domain.chat.ChatPeriod
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,7 +24,8 @@ internal object ChatSchema {
                     action(
                         "QUERY",
                         "metric" to enumOf("SUM", "COUNT", "LIST", "AVERAGE"),
-                        "from" to date(), "to" to date(),
+                        "period" to enumOf(*ChatPeriod.entries.map { it.name }.toTypedArray()),
+                        "from" to optionalDate(), "to" to optionalDate(),
                         "category" to enumOf(ALL, *categoryIds.toTypedArray()),
                     ),
                     action("DESCRIBE", "reference" to reference(), "text" to text()),
@@ -60,5 +62,7 @@ internal object ChatSchema {
     private fun enumOf(vararg values: String) = JSONObject().put("type", "string").put("enum", JSONArray(values.toList()))
     private fun reference() = enumOf("LAST", "MOST_EXPENSIVE", "BY_FILTER")
     private fun text() = JSONObject().put("type", "string").put("maxLength", MAX_TEXT)
+    /** Vacio salvo con period CUSTOM: asi el modelo no inventa un rango cuando no lo hay. */
+    private fun optionalDate() = JSONObject().put("type", "string").put("pattern", "^([0-9]{4}-[0-9]{2}-[0-9]{2})?$")
     private fun date() = JSONObject().put("type", "string").put("pattern", "^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 }
