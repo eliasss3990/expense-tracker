@@ -53,7 +53,6 @@ class DecideRegistration {
         val reasons = linkedSetOf<DecisionReason>()
         if (primary.direction != MoneyDirection.OUTGOING) reasons += DecisionReason.AMBIGUOUS_DIRECTION
         if (primary.status != OperationStatus.COMPLETED) reasons += DecisionReason.NOT_COMPLETED
-        if (primary.doubts.isNotEmpty()) reasons += DecisionReason.MODEL_DOUBT
 
         val operation = primary.operationAmount
         if (operation == null) reasons += DecisionReason.NO_SINGLE_OPERATION_AMOUNT
@@ -135,9 +134,6 @@ class DecideRegistration {
             cross != null && !agree(primary, cross) -> reasons += DecisionReason.PASSES_DISAGREE
             cross == null && policy.requireCrossCheck -> reasons += DecisionReason.NO_CROSS_CHECK
         }
-        // Las dos pasadas son el mismo modelo: sus errores estan correlacionados. Descartar (lo unico
-        // que hace desaparecer un aviso) exige ademas que ninguna haya declarado dudas.
-        if (primary.doubts.isNotEmpty() || cross?.doubts?.isNotEmpty() == true) reasons += DecisionReason.MODEL_DOUBT
         if (reasons.isNotEmpty()) {
             return RegistrationDecision(
                 RegistrationOutcome.REVIEW, reasons, parsed?.amount, parsed?.currency, parsed?.merchant,

@@ -2,7 +2,6 @@ package com.eliasgonzalez.expensetracker.data.analysis
 
 import com.eliasgonzalez.expensetracker.domain.analysis.AmountRole
 import com.eliasgonzalez.expensetracker.domain.analysis.CategoryOption
-import com.eliasgonzalez.expensetracker.domain.analysis.ModelDoubt
 import com.eliasgonzalez.expensetracker.domain.analysis.MoneyDirection
 import com.eliasgonzalez.expensetracker.domain.analysis.OperationStatus
 import org.json.JSONArray
@@ -20,12 +19,11 @@ import org.json.JSONObject
 internal object InterpretationSchema {
     private const val MAX_AMOUNTS = 8
     private const val MAX_MERCHANT_CHARS = 80
-    private const val MAX_DOUBTS = 5
 
     fun build(categories: List<CategoryOption>): String = JSONObject().apply {
         put("type", "object")
         put("additionalProperties", false)
-        put("required", JSONArray(listOf("direction", "status", "amounts", "merchant", "category", "doubts")))
+        put("required", JSONArray(listOf("direction", "status", "amounts", "merchant", "category")))
         put(
             "properties",
             JSONObject().apply {
@@ -41,14 +39,6 @@ internal object InterpretationSchema {
                 )
                 put("merchant", nullable(JSONObject().put("type", "string").put("maxLength", MAX_MERCHANT_CHARS)))
                 put("category", nullable(enumOf(categories.map { it.id }), emptyAllowed = categories.isEmpty()))
-                put(
-                    "doubts",
-                    JSONObject().apply {
-                        put("type", "array")
-                        put("maxItems", MAX_DOUBTS)
-                        put("items", enumOf(ModelDoubt.entries.map { it.name }))
-                    },
-                )
             },
         )
     }.toString()
