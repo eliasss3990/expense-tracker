@@ -34,6 +34,12 @@ confirmar un gasto sin que el usuario lo revise.
   rechazar o editar desde la Bandeja no se corta a mitad aunque la tarjeta
   salga de la pantalla (así siempre se retira la notificación y queda la
   entrada en Actividad).
+- **IA local (opcional, apagada por defecto):** un modelo de lenguaje que corre
+  **en el teléfono** (Gemma 4 E2B vía LiteRT-LM, ~2,6 GB, descarga explícita por
+  Wi-Fi) puede leer los avisos de las fuentes confiables, registrar solos los
+  gastos seguros y dejar como candidato lo dudoso, ya con la categoría puesta.
+  Los parsers siguen existiendo y siguen siendo la vía de siempre; ver la sección
+  [IA local](#ia-local) para cómo decide, cómo se audita y cómo se activa.
 - El candidato dispara una notificación propia con **Aceptar / Editar /
   Rechazar**. Aceptar y Rechazar son idempotentes: repetir la acción
   sobre un candidato ya resuelto no hace nada.
@@ -118,6 +124,9 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   ├── banners/                   Banners deslizables (permisos faltantes, update disponible)
 │   │   ├── MissingPermissionsBanner.kt
 │   │   └── UpdateAvailableBanner.kt
+│   ├── ai/                        Pantalla de IA local: modelo, modo y por qué de cada decisión
+│   │   ├── AiScreen.kt
+│   │   └── AiPresentation.kt      Textos en castellano de cada código de la auditoría (puro, probado)
 │   ├── common/                    Helpers compartidos entre pantallas (ScreenSupport, etc.)
 │   │   └── ScreenSupport.kt
 │   └── theme/                     Colores, tipografía y modelo de UI de categoría
@@ -134,7 +143,11 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   ├── NotificationAccess.kt    Chequeo del permiso de acceso a notificaciones
 │   ├── UenoBankParser.kt        Parser específico (app + mail de Ueno Bank)
 │   ├── BancoFamiliarParser.kt   Parser específico (mails de Banco Familiar/Eko)
-│   ├── GenericPurchaseParser.kt Red de contención para fuentes sin parser propio
+│   ├── GenericPurchaseParser.kt Red de contención para fuentes sin parser propio (NO es un parser curado)
+│   ├── TrustedSources.kt        Paquetes confiables y cuánto se confía en su contenido (banco vs buzón)
+│   ├── FinancialPrefilter.kt    Descarta lo que ni menciona dinero antes de despertar al modelo
+│   ├── AndroidCandidateAnnouncer.kt   Publica la notificación "Gasto detectado" (Aceptar/Editar/Rechazar)
+│   ├── AndroidReviewNoticeAnnouncer.kt  Avisa de un aviso con dinero que no se pudo interpretar
 │   └── CandidateActionReceiver.kt  Acciones Aceptar/Editar/Rechazar de la notificación
 ├── quicksettings/            Quick Settings Tile
 │   ├── RegisterExpenseTileService.kt
@@ -151,6 +164,8 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   │                             (CategoryIds = ids de fábrica guardados en la base: nunca cambian)
 │   ├── catalog/                 CatalogDefaults, CategoryPolicy (qué categoría se guarda),
 │   │                             CategoryDisplay (mostrar por id), CatalogUsage (¿en uso?)
+│   ├── analysis/                IA local, sin saber de ningún modelo: contratos (TransactionInterpreter),
+│   │                             DecideRegistration (la decisión), puertos de la cola y la auditoría
 │   ├── log/                     AppLog (fachada de logging) + LogSink (destino). Sin Android
 │   ├── notification/            Puerto CandidateNotifier (retirar la notificación al resolver)
 │   ├── retry/                   retrying(): reintento con backoff lineal (puro)
@@ -160,13 +175,23 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 │   └── usecase/                 RegisterExpense, CreateCandidate, ConfirmCandidate,
 │                                 EditCandidate, RejectCandidate, EditExpense,
 │                                 DeleteExpense, ExportBackup, Observe*, FindPendingCandidate,
-│                                 Create/Rename/SetActive/DeleteCatalogEntry (catálogo)
+│                                 Create/Rename/SetActive/DeleteCatalogEntry (catálogo),
+│                                 HandleDetectedNotification, ProcessAnalysisQueue, AutoRegisterExpense,
+│                                 ResolveCategory, RecoverDiscarded, ListRecentDecisions (IA local)
+├── data/analysis/            Todo lo que SÍ conoce a un modelo concreto (reemplazable)
+│   ├── ModelDescriptor.kt       Qué modelo es: id, URL fijada a un commit, tamaño y SHA-256
+│   ├── DownloadManagerModelManager.kt  Descarga solo por Wi-Fi y verifica el SHA-256
+│   ├── LiteRtTransactionInterpreter.kt Único adaptador que usa LiteRT-LM (cancelación real, salida restringida)
+│   ├── InterpretationPrompts.kt / InterpretationSchema.kt / ModelOutputParser.kt  Prompt, esquema JSON y lectura
+│   └── InterpretationCodec.kt   JSON versionado de lo que interpretó el modelo, para la auditoría
 ├── data/local/               Implementación con SQLite detrás de las interfaces de domain
 │   ├── DbHelper.kt              Adaptador fino de SQLiteOpenHelper: delega en DbSchema
 │   ├── DbSchema.kt              Esquema y migraciones SOLO aditivas (nunca DROP), en Kotlin puro
 │   ├── AndroidSqlExecutor.kt    SqlExecutor sobre SQLiteDatabase (en los tests: una SQLite real en la JVM)
 │   ├── CatalogSeedV3.kt         Lista congelada que siembra la migración v2→v3
 │   ├── CatalogRows.kt           Mapeo CatalogEntry ↔ fila de catalog_entries
+│   ├── LocalAnalysisQueueRepository.kt / LocalDecisionAuditRepository.kt  Cola y auditoría del análisis (v4)
+│   ├── SqlDatabase.kt           insert/update/query sobre SqlExecutor (en los tests: SQLite real)
 │   ├── LocalCatalogRepository.kt
 │   ├── LocalExpenseRepository.kt
 │   ├── LocalCandidateRepository.kt
@@ -176,7 +201,7 @@ app/src/main/kotlin/com/eliasgonzalez/expensetracker/
 
 El dominio (`domain/`) no importa nada de Android ni de SQLite — solo
 conoce sus propias interfaces de repositorio. Eso es lo que permite tener
-tests unitarios puros en `src/test/` (unos 440 tests en 44 archivos, corren en
+tests unitarios puros en `src/test/` (unos 600 tests en 61 archivos, corren en
 JVM sin emulador ni Robolectric) para la idempotencia, la deduplicación,
 los parsers, los filtros del Dashboard y el sanitizado de inputs:
 
@@ -190,10 +215,12 @@ cada PR):
 | `domain/catalog/`, `domain/model/` | Política de categorías, qué se muestra por id, ids persistidos de fábrica y el seed |
 | `domain/log/`, `domain/retry/` | `AppLog` (un destino que lanza no rompe al que loguea) y el reintento con backoff |
 | `domain/filter/`, `domain/text/` | Filtros del Dashboard y sanitizado del campo Monto |
-| `data/local/` | **Migraciones de la base contra una SQLite real** y el seed congelado |
+| `domain/analysis/` | La decisión de la IA (`DecideRegistration`): saldo vs importe, reembolsos, moneda, fuentes de confianza, acuerdo entre pasadas, memoria de categoría |
+| `data/local/` | **Migraciones de la base contra una SQLite real**, el seed congelado y la cola y auditoría del análisis |
+| `data/analysis/` | Prompts, esquema JSON de la salida, lectura tolerante de lo que devuelve el modelo, codec de auditoría y el manejo del motor al cancelar |
 | `notification/` | Parsers (Ueno, Banco Familiar, genérico), su prioridad en `ParserEngine` y el recurso del ícono de notificación |
 | `update/` | Comparación de versiones, derivación de enlaces de la release y clasificación de fallos del actualizador |
-| `ui/` | Funciones puras de las pantallas (filtros, mensajes, decisión de `QuickAddActivity`); sin tests de las pantallas en sí |
+| `ui/` | Funciones puras de las pantallas (filtros, mensajes, decisión de `QuickAddActivity`, textos de la pantalla de IA); sin tests de las pantallas en sí |
 
 **Por qué SQLite directo y no Room:** Room 2.8.x necesita KSP para el
 codegen de `@Entity`/`@Dao`, y al momento de armar este proyecto KSP
@@ -206,6 +233,55 @@ Room después no debería tocar nada fuera de `data/local/`.
 **Por qué DI manual y no Hilt:** el grafo de dependencias es chico
 (un puñado de repositorios y casos de uso) — `di/AppContainer.kt` arma
 todo a mano en unas pocas líneas, sin la complejidad de un framework.
+
+## IA local
+
+Lee los avisos de los bancos con un modelo de lenguaje que corre **dentro del teléfono**: nada de
+lo que dice una notificación sale de él. Está **apagada por defecto**; hasta que se descargue el
+modelo y se elija un modo, la app se comporta exactamente como antes.
+
+**Cómo se activa:** menú de tres puntos → **IA local** → descargar el modelo (~2,6 GB, solo por Wi-Fi,
+se verifica su SHA-256) → elegir el modo:
+
+| Modo | Qué hace |
+|---|---|
+| **Sombra** (por defecto) | Todo sigue como siempre. El modelo analiza en silencio y queda anotado lo que *habría* hecho, para medirlo sin riesgo |
+| **Asistido** | El modelo propone: cada gasto llega como candidato, ya con su categoría |
+| **Automático** | Registra solo los gastos que da por seguros; lo dudoso llega como candidato |
+
+**Cómo decide.** El modelo no decide nada por sí solo: rellena campos cerrados (dirección del
+dinero, estado de la operación, el papel de cada cifra —importe, saldo, límite, cuota—, comercio,
+categoría y dudas) y el dominio comprueba que sea coherente. Un gasto se registra solo únicamente si:
+
+- el modelo lo leyó **dos veces** (la segunda sin ver al parser) con el mismo resultado, sin declarar dudas;
+- el importe figura **literalmente** en el aviso y la moneda es la del texto (solo guaraníes se registran solos);
+- si hay un parser a medida, **coincide** con él;
+- la fuente es de fiar: una app de banco sí; un **buzón (Gmail) solo si lo reconoció un parser a medida**, porque
+  cualquiera puede mandarte un mail. El parser genérico no cuenta como a medida.
+
+Cualquier duda termina en un **candidato**, nunca en un gasto. Lo único que hace desaparecer un aviso es
+descartarlo (ingresos, reembolsos, operaciones rechazadas), y exige que las dos lecturas coincidan y que ninguna
+haya dudado; igual queda en la lista de decisiones y se puede **recuperar** como candidato.
+
+**Categoría.** Sale, en este orden, de lo que ya categorizaste para ese comercio (tu historial), de lo que elige
+el modelo **entre las categorías activas de tu catálogo** (no puede inventar otra), o del comodín "Otro".
+
+**Por qué cada aviso salió como salió.** La pantalla *IA local* lista las decisiones recientes; al tocar una se ve el
+motivo en castellano y de dónde salió la categoría. Cada decisión se guarda en la base (tabla `decision_audit`: efecto,
+motivos, lo que interpretó el modelo y su tiempo) y deja una línea en logcat con la etiqueta `AiDecision`
+(solo códigos, ids y tiempos: **nunca importes, comercios ni el texto del aviso**). El texto original queda en la cola
+unos días para reintentar y reconstruir una decisión, y después se borra.
+
+**Para no perder avisos.** Si el modelo falla, se reintenta con espera creciente y, agotados los intentos, sale el
+candidato del parser. Si el modelo deja de estar, lo encolado sale por el flujo de siempre. Un aviso con dinero que
+no se pudo interpretar te llega como una notificación para que lo mires en el banco.
+
+**Cambiar de modelo.** Todo lo que depende de un modelo concreto vive en `data/analysis/` y entra por tres líneas de
+`AppContainer`. Otro modelo es otro `ModelDescriptor` y, si usa otro runtime, otro `TransactionInterpreter`; la cola,
+la auditoría, la decisión y la pantalla no cambian.
+
+**Qué no está verificado todavía:** el comportamiento real del modelo en el teléfono, y que el motor de gramáticas del
+runtime acepte el esquema JSON de la salida (si lo rechaza, reintenta sin restricción y lo anota en el log).
 
 ## Instalación
 
@@ -316,7 +392,7 @@ ejecute no demuestra nada.
 ## Cómo probar la detección
 
 No hace falta un pago real: cualquier notificación de un paquete
-confiable (ver `TRUSTED_PACKAGES` en `GenericPurchaseParser.kt`) cuyo
+confiable (ver `TrustedSources.kt`) cuyo
 texto contenga un patrón como `Gs. 85.000`, `₲85.000` o `PYG 85000`
 dispara el candidato (siempre que no contenga una palabra clave de
 ingreso como "recib"/"acredit"/"ingreso", en cuyo caso se ignora a
@@ -338,6 +414,12 @@ al aceptar/rechazar, en **Actividad** que quedó la traza completa, y en
 está pendiente o rechazado).
 
 ## Qué NO tiene todavía
+
+**La IA local todavía no se probó en un dispositivo real:** el código compila, sus
+tests pasan y el CI está en verde, pero nadie corrió aún el modelo de verdad (ni
+midió su latencia, memoria o exactitud con avisos reales). Hasta entonces conviene
+dejarla en modo Sombra. Detalle en [IA local](#ia-local).
+
 
 Room (ver arriba por qué), Hilt, parsers para bancos/billeteras más allá
 de Ueno Bank y Banco Familiar/Eko (el parser genérico cubre el resto de
