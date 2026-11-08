@@ -8,6 +8,7 @@ import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisEvent
 import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisEventKey
 import com.eliasgonzalez.expensetracker.domain.analysis.NotificationSnapshot
 import com.eliasgonzalez.expensetracker.domain.analysis.ParserEvidence
+import com.eliasgonzalez.expensetracker.domain.analysis.RepostGuard
 import com.eliasgonzalez.expensetracker.domain.analysis.SourceTrust
 import com.eliasgonzalez.expensetracker.domain.log.AppLog
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,7 @@ import kotlinx.coroutines.launch
 class ExpenseNotificationListenerService : NotificationListenerService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val repostGuard = RepostGuard()
 
     override fun onCreate() {
         super.onCreate()
@@ -53,7 +55,13 @@ class ExpenseNotificationListenerService : NotificationListenerService() {
         if (parser is ParserEvidence.ExplicitlyIgnored) return
         val trust = TrustedSources.trustOf(context.packageName)
         // Sin parser, solo se analiza una fuente de la lista que ademas hable de dinero.
-        if (parser is ParserEvidence.NoParser && (trust == null || !FinancialPrefilter.mentionsMoney(context))) return
+        if (parser is ParserEvidence.NoParser &&
+            (trust == null || !FinancialPrefilter.mentionsMoney(context, requireFigure = trust != SourceTrust.BANK))
+        ) {
+            return
+        }
+        // La misma notificacion re-publicada (p. ej. Gmail al sincronizar) no es un aviso nuevo.
+        if (repostGuard.isRepeat(sbn.key, listOf(context.packageName, context.title, context.text, context.bigText))) return
 
         val snapshot = NotificationSnapshot(
             packageName = context.packageName,

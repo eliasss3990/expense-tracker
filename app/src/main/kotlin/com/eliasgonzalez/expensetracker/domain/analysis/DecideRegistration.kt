@@ -148,7 +148,14 @@ class DecideRegistration {
         return RegistrationDecision(RegistrationOutcome.DISCARD, setOf(why), null, null, null, false)
     }
 
-    private fun agree(a: TransactionInterpretation, b: TransactionInterpretation): Boolean =
+    private fun agree(a: TransactionInterpretation, b: TransactionInterpretation): Boolean {
+        // Si las dos dicen "no es un movimiento", el estado y las cifras que adornen la respuesta son ruido
+        // (un correo cualquiera): exigirles coincidir convertia un correo irrelevante en un aviso al usuario.
+        if (a.direction == MoneyDirection.NONE && b.direction == MoneyDirection.NONE) return true
+        return agreeOnMovement(a, b)
+    }
+
+    private fun agreeOnMovement(a: TransactionInterpretation, b: TransactionInterpretation): Boolean =
         a.direction == b.direction &&
             a.status == b.status &&
             a.operationAmount?.value == b.operationAmount?.value &&
