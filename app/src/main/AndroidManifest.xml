@@ -76,5 +76,9 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+
+        <!-- Backend GPU de LiteRT-LM: la app pide estas librerias nativas del sistema (opcionales; sin ellas usa CPU). -->
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
     </application>
 </manifest>

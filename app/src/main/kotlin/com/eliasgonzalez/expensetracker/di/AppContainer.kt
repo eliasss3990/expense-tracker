@@ -37,7 +37,25 @@ import com.eliasgonzalez.expensetracker.notification.AndroidCandidateNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import com.eliasgonzalez.expensetracker.data.analysis.DownloadManagerModelManager
+import com.eliasgonzalez.expensetracker.data.analysis.Gemma4E2B
+import com.eliasgonzalez.expensetracker.data.analysis.LiteRtTransactionInterpreter
+import com.eliasgonzalez.expensetracker.data.analysis.SharedPreferencesAnalysisModeProvider
+import com.eliasgonzalez.expensetracker.data.local.AndroidSqlDatabase
+import com.eliasgonzalez.expensetracker.data.local.LocalAnalysisQueueRepository
+import com.eliasgonzalez.expensetracker.data.local.LocalDecisionAuditRepository
+import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisQueueRepository
+import com.eliasgonzalez.expensetracker.domain.analysis.CandidateAnnouncer
+import com.eliasgonzalez.expensetracker.domain.analysis.DecideRegistration
+import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAuditRepository
+import com.eliasgonzalez.expensetracker.domain.analysis.LocalModelManager
+import com.eliasgonzalez.expensetracker.domain.usecase.AutoRegisterExpense
+import com.eliasgonzalez.expensetracker.domain.usecase.HandleDetectedNotification
+import com.eliasgonzalez.expensetracker.domain.usecase.ListRecentDecisions
+import com.eliasgonzalez.expensetracker.domain.usecase.ProcessAnalysisQueue
+import com.eliasgonzalez.expensetracker.notification.AndroidCandidateAnnouncer
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 
 /**
@@ -130,6 +148,51 @@ class AppContainer(context: Context) {
     val observeCandidates = ObserveCandidates(candidateRepository)
     val observeActivity = ObserveActivity(activityRepository)
     val findPendingCandidate = FindPendingCandidate(candidateRepository)
+
+    // --- Analisis de notificaciones con un modelo local ---------------------------------------------
+    // Todo lo que depende de un modelo concreto (Gemma, LiteRT-LM) entra por estas tres lineas; el resto
+    // (cola, decision, auditoria, UI) solo conoce los puertos de domain/analysis.
+    private val sqlDatabase = AndroidSqlDatabase(dbHelper)
+    private val analysisQueue: AnalysisQueueRepository = LocalAnalysisQueueRepository(sqlDatabase)
+    private val decisionAudit: DecisionAuditRepository = LocalDecisionAuditRepository(sqlDatabase)
+    val localModelManager: LocalModelManager = DownloadManagerModelManager(context.applicationContext, Gemma4E2B)
+    private val transactionInterpreter = LiteRtTransactionInterpreter(context.applicationContext, Gemma4E2B, localModelManager)
+    val analysisModeProvider = SharedPreferencesAnalysisModeProvider(context.applicationContext)
+    private val candidateAnnouncer: CandidateAnnouncer = AndroidCandidateAnnouncer(context.applicationContext)
+
+    private val autoRegisterExpense = AutoRegisterExpense(
+        candidateRepository, expenseRepository, registerExpense, candidateWriteMutex, awaitHydrated,
+    )
+    private val processAnalysisQueue = ProcessAnalysisQueue(
+        queue = analysisQueue,
+        interpreter = transactionInterpreter,
+        decide = DecideRegistration(),
+        createCandidate = createCandidate,
+        findPendingCandidate = findPendingCandidate,
+        autoRegister = autoRegisterExpense,
+        announcer = candidateAnnouncer,
+        audit = decisionAudit,
+        modeProvider = analysisModeProvider,
+    )
+    val handleDetectedNotification = HandleDetectedNotification(
+        queue = analysisQueue,
+        createCandidate = createCandidate,
+        findPendingCandidate = findPendingCandidate,
+        announcer = candidateAnnouncer,
+        modeProvider = analysisModeProvider,
+        modelAvailability = localModelManager,
+        onQueued = { appScope.launch { processAnalysisQueue.drain() } },
+    )
+    val listRecentDecisions = ListRecentDecisions(decisionAudit)
+
+    init {
+        // Al arrancar: lo que quedo a medias por la muerte del proceso vuelve a la cola y se procesa.
+        appScope.launch {
+            if (!awaitHydrated()) return@launch
+            processAnalysisQueue.recoverOnStartup()
+            if (localModelManager.isReady()) processAnalysisQueue.drain()
+        }
+    }
 
     // Catalogo gestionable: lo consumen los selectores/listados (ui/theme/
     // CategoryUi.kt) y la pantalla de gestion (ui/catalog/CategoriesScreen.kt).
