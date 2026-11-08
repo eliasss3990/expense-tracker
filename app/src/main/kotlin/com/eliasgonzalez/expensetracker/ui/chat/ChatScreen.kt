@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -120,8 +121,9 @@ internal fun ChatScreen(onClose: () -> Unit) {
         add(presentation.text(ChatReply.Cancelled))
     }
 
-    // Sin imePadding: la ventana ya se achica por el teclado; sumarlo descontaba su altura dos veces y aplastaba el chat.
-    Column(Modifier.fillMaxSize()) {
+    // Pantalla borde a borde: el sistema no achica la ventana por el teclado, entrega su alto como inset. Con adjustResize
+    // (manifiesto) + imePadding el campo sube sobre el teclado; sin eso la ventana se desplaza y tapa el titulo y los mensajes.
+    Column(Modifier.fillMaxSize().imePadding()) {
         TopAppBar(
             title = { Text("Asistente") },
             navigationIcon = {
