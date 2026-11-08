@@ -10,6 +10,13 @@ sealed interface ChatProposal {
     data class Delete(val expense: Expense) : ChatProposal
 }
 
+/** Una linea con lo que haria la propuesta; la usan el contexto del modelo y los logs, no la UI. */
+fun ChatProposal.summary(): String = when (this) {
+    is ChatProposal.Create -> "cargar ${expense.merchant} ${expense.amount} en ${expense.categoryId}"
+    is ChatProposal.Edit -> "editar ${before.merchant}: monto ${before.amount} a ${after.amount}, categoria ${before.categoryId} a ${after.categoryId}, comercio ${before.merchant} a ${after.merchant}"
+    is ChatProposal.Delete -> "borrar ${expense.merchant} ${expense.amount}"
+}
+
 enum class ClarifyReason {
     NOT_FOUND, AMBIGUOUS_REFERENCE, INVALID_AMOUNT, INVALID_DATE, UNKNOWN_CATEGORY, DATE_NOT_EDITABLE,
     INVALID_RANGE, UNREADABLE, EMPTY_PHRASE, NOTHING_TO_REVISE,

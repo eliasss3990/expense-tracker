@@ -39,6 +39,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import com.eliasgonzalez.expensetracker.data.analysis.DownloadManagerModelManager
 import com.eliasgonzalez.expensetracker.data.analysis.Gemma4E2B
+import com.eliasgonzalez.expensetracker.data.analysis.LiteRtChatInterpreter
+import com.eliasgonzalez.expensetracker.data.analysis.LiteRtGenerator
+import com.eliasgonzalez.expensetracker.domain.analysis.CategoryOption
+import com.eliasgonzalez.expensetracker.domain.chat.ChatSession
+import com.eliasgonzalez.expensetracker.domain.chat.ChatAssistant
 import com.eliasgonzalez.expensetracker.data.analysis.LiteRtTransactionInterpreter
 import com.eliasgonzalez.expensetracker.data.analysis.SharedPreferencesAnalysisModeProvider
 import com.eliasgonzalez.expensetracker.data.local.AndroidSqlDatabase
@@ -162,7 +167,9 @@ class AppContainer(context: Context) {
     private val analysisQueue: AnalysisQueueRepository = LocalAnalysisQueueRepository(sqlDatabase)
     private val decisionAudit: DecisionAuditRepository = LocalDecisionAuditRepository(sqlDatabase)
     val localModelManager: LocalModelManager = DownloadManagerModelManager(context.applicationContext, Gemma4E2B)
-    private val transactionInterpreter = LiteRtTransactionInterpreter(context.applicationContext, Gemma4E2B, localModelManager)
+    // Un solo motor para avisos y chat: dos copias de los pesos (~2,6 GB cada una) no caben en RAM.
+    private val liteRtGenerator = LiteRtGenerator(context.applicationContext, Gemma4E2B, localModelManager)
+    private val transactionInterpreter = LiteRtTransactionInterpreter(liteRtGenerator, Gemma4E2B.id)
     val analysisModeStore: AnalysisModeStore = SharedPreferencesAnalysisModeProvider(context.applicationContext)
     private val candidateAnnouncer: CandidateAnnouncer = AndroidCandidateAnnouncer(context.applicationContext)
 
@@ -170,6 +177,17 @@ class AppContainer(context: Context) {
         candidateRepository, expenseRepository, registerExpense, candidateWriteMutex, awaitHydrated,
     )
     private val resolveCategory = ResolveCategory(expenseRepository, catalogRepository, awaitHydrated)
+
+    // Chat de IA: el modelo solo interpreta (ChatInterpreter); el asistente valida y toda escritura espera confirmacion.
+    private val chatAssistant = ChatAssistant(
+        LiteRtChatInterpreter(liteRtGenerator), expenseRepository, registerExpense, editExpense, deleteExpense,
+    )
+
+    /** Un chat nuevo: sin nada del anterior. La sesion vive en memoria y se descarta al cerrar la pantalla. */
+    fun newChatSession(): ChatSession = ChatSession(chatAssistant)
+
+    /** Categorias activas del usuario: lo unico que el modelo puede elegir al cargar o editar. */
+    suspend fun chatCategories(): List<CategoryOption> = resolveCategory.options()
     // Tipos explicitos: la cola y el programador de reintentos se referencian entre si y Kotlin no puede inferirlos.
     private val processAnalysisQueue: ProcessAnalysisQueue = ProcessAnalysisQueue(
         queue = analysisQueue,

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
@@ -58,6 +59,7 @@ import com.eliasgonzalez.expensetracker.ui.ai.AiScreen
 import com.eliasgonzalez.expensetracker.ui.banners.MissingPermissionsBanner
 import com.eliasgonzalez.expensetracker.ui.banners.UpdateAvailableBanner
 import com.eliasgonzalez.expensetracker.ui.catalog.CategoriesScreen
+import com.eliasgonzalez.expensetracker.ui.chat.ChatScreen
 import com.eliasgonzalez.expensetracker.ui.dashboard.DashboardScreen
 import com.eliasgonzalez.expensetracker.ui.dashboard.ManualAddSheet
 import com.eliasgonzalez.expensetracker.ui.onboarding.OnboardingPrefs
@@ -81,6 +83,7 @@ private enum class Destination(val label: String) {
     ACTIVITY("Actividad"),
     CATEGORIES("Categorías"),
     AI("IA local"),
+    CHAT("Asistente"),
 }
 
 private const val SPLASH_MIN_DURATION_MS = 2000L
@@ -271,14 +274,14 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
     Scaffold(
         floatingActionButton = {
             // La pantalla de categorías tiene su propio botón "Nueva".
-            if (destination != Destination.CATEGORIES && destination != Destination.AI) {
+            if (destination != Destination.CATEGORIES && destination != Destination.AI && destination != Destination.CHAT) {
                 FloatingActionButton(onClick = { showAddSheet = true }) {
                     Icon(Icons.Filled.Add, contentDescription = "Nuevo gasto")
                 }
             }
         },
         topBar = {
-            TopAppBar(
+            if (destination != Destination.CHAT) TopAppBar(
                 title = { Text("Expense Tracker", fontWeight = FontWeight.Bold) },
                 actions = {
                     if (destination == Destination.DASHBOARD) {
@@ -288,6 +291,9 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                         }) {
                             Icon(Icons.Filled.FileDownload, contentDescription = "Exportar backup")
                         }
+                    }
+                    IconButton(onClick = { destination = Destination.CHAT }) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = "Asistente de IA")
                     }
                     IconButton(onClick = { showOverflowMenu = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "Más opciones")
@@ -326,7 +332,7 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
             )
         },
         bottomBar = {
-            NavigationBar {
+            if (destination != Destination.CHAT) NavigationBar {
                 NavigationBarItem(
                     selected = destination == Destination.DASHBOARD,
                     onClick = { destination = Destination.DASHBOARD },
@@ -353,13 +359,14 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            availableUpdate?.let { release ->
+            // El chat es pantalla completa: sin los avisos de actualizacion ni de permisos encima.
+            if (destination != Destination.CHAT) availableUpdate?.let { release ->
                 UpdateAvailableBanner(
                     release = release,
                     onDismiss = { availableUpdate = null },
                 )
             }
-            MissingPermissionsBanner(
+            if (destination != Destination.CHAT) MissingPermissionsBanner(
                 listenerEnabled = listenerEnabled.value,
                 notificationsGranted = notificationsGranted.value,
                 showNotificationsStep = showNotificationsStep,
@@ -376,6 +383,7 @@ private fun AppRoot(listenerEnabled: MutableState<Boolean>, notificationsGranted
                 Destination.ACTIVITY -> ActivityScreen()
                 Destination.CATEGORIES -> CategoriesScreen()
                 Destination.AI -> AiScreen()
+                Destination.CHAT -> ChatScreen(onClose = { destination = Destination.DASHBOARD })
             }
         }
     }

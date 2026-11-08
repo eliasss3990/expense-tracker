@@ -37,12 +37,12 @@ class ChatSession(private val assistant: ChatAssistant, private val maxTurns: In
         val proposal = pending ?: return null
         val result = assistant.confirm(proposal)
         if (result != ConfirmResult.FAILED) pending = null
-        remember(ChatTurn(TurnRole.ASSISTANT, "Confirmado: ${describe(proposal)} ($result)"))
+        remember(ChatTurn(TurnRole.ASSISTANT, "Confirmado: ${proposal.summary()} ($result)"))
         return result
     }
 
     fun cancel() {
-        if (pending != null) remember(ChatTurn(TurnRole.ASSISTANT, "Cancelado: ${describe(pending!!)}"))
+        if (pending != null) remember(ChatTurn(TurnRole.ASSISTANT, "Cancelado: ${pending!!.summary()}"))
         pending = null
     }
 
@@ -51,16 +51,10 @@ class ChatSession(private val assistant: ChatAssistant, private val maxTurns: In
         is ChatReply.Summary -> "Respondi ${reply.metric} = ${reply.total} (${reply.count} gastos)"
         is ChatReply.Listing -> "Liste ${reply.items.size} de ${reply.totalCount} gastos"
         is ChatReply.Detail -> "Conte del gasto ${reply.expense.merchant} ${reply.expense.amount}"
-        is ChatReply.Confirm -> "Propuse: ${describe(reply.proposal)}. Espero confirmacion o correccion."
+        is ChatReply.Confirm -> "Propuse: ${reply.proposal.summary()}. Espero confirmacion o correccion."
         is ChatReply.Clarify -> "No pude: ${reply.reason}"
         is ChatReply.Talk -> reply.text.take(MAX_TURN_CHARS)
         ChatReply.Cancelled -> "Propuesta cancelada"
-    }
-
-    private fun describe(p: ChatProposal): String = when (p) {
-        is ChatProposal.Create -> "cargar ${p.expense.merchant} ${p.expense.amount} en ${p.expense.categoryId}"
-        is ChatProposal.Edit -> "editar ${p.before.merchant}: ${p.before.amount} -> ${p.after.amount}, ${p.before.categoryId} -> ${p.after.categoryId}"
-        is ChatProposal.Delete -> "borrar ${p.expense.merchant} ${p.expense.amount}"
     }
 
     private fun remember(turn: ChatTurn) {
