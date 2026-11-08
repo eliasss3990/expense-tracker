@@ -12,6 +12,7 @@ import org.json.JSONObject
  */
 internal object ChatSchema {
     private const val MAX_TEXT = 80
+    private const val MAX_DESCRIPTION = 120
     private const val MAX_REPLY = 160
     const val ALL = "ALL"
 
@@ -33,7 +34,7 @@ internal object ChatSchema {
                         "CREATE",
                         "amount" to JSONObject().put("type", "integer"),
                         "merchant" to text(),
-                        "description" to text(),
+                        "description" to longText(),
                         "category" to enumOf(*categoryIds.ifEmpty { listOf(ALL) }.toTypedArray()),
                         "date" to date(),
                     ),
@@ -67,6 +68,8 @@ internal object ChatSchema {
 
     private fun enumOf(vararg values: String) = JSONObject().put("type", "string").put("enum", JSONArray(values.toList()))
     private fun reference() = enumOf("LAST", "MOST_EXPENSIVE", "BY_FILTER")
+    /** La descripcion de un gasto es una frase, no una palabra: mas margen que un nombre. */
+    private fun longText() = JSONObject().put("type", "string").put("maxLength", MAX_DESCRIPTION)
     private fun text() = JSONObject().put("type", "string").put("maxLength", MAX_TEXT)
     /** Vacio salvo con period CUSTOM: asi el modelo no inventa un rango cuando no lo hay. */
     private fun optionalDate() = JSONObject().put("type", "string").put("pattern", "^([0-9]{4}-[0-9]{2}-[0-9]{2})?$")

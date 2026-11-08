@@ -69,8 +69,9 @@ class ChatPromptsTest {
     fun `el prompt separa el producto del comercio con ejemplos`() {
         val s = ChatPrompts.system(today, cats)
         assertTrue("Nunca pongas el producto en merchant" in s)
-        assertTrue("\"merchant\":\"\",\"description\":\"Cafe\"" in s)
-        assertTrue("\"merchant\":\"Shell\",\"description\":\"Nafta\"" in s)
+        assertTrue("\"merchant\":\"\",\"description\":\"Compra de cafe\"" in s)
+        assertTrue("\"merchant\":\"Shell\",\"description\":\"Carga de nafta en Shell\"" in s)
+        assertTrue("una frase corta y descriptiva" in s); assertTrue("No inventes datos que el usuario no dijo" in s)
     }
 
     @Test

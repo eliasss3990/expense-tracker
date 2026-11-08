@@ -39,6 +39,9 @@ class ChatSchemaTest {
     fun `cargar distingue el comercio de la descripcion y se puede editar la descripcion`() {
         val create = branches().first { it.actionName() == "CREATE" }.getJSONObject("properties")
         assertTrue(create.has("merchant") && create.has("description"))
+        // la descripcion es una frase: mas larga que un nombre, pero acotada
+        assertTrue(create.getJSONObject("description").getInt("maxLength") in 100..200)
+        assertTrue(create.getJSONObject("merchant").getInt("maxLength") < create.getJSONObject("description").getInt("maxLength"))
         for (name in listOf("EDIT", "REVISE")) {
             val fields = branches().first { it.actionName() == name }.getJSONObject("properties").getJSONObject("field").getJSONArray("enum").strings()
             assertTrue("DESCRIPTION" in fields)
