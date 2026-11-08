@@ -100,6 +100,7 @@ internal class ChatPresentation(
         ClarifyReason.INVALID_RANGE -> "El rango de fechas está al revés. ¿Desde cuándo y hasta cuándo?"
         ClarifyReason.UNREADABLE -> "No entendí eso. ¿Podés decirlo de otra forma?"
         ClarifyReason.EMPTY_PHRASE -> "Escribime algo."
+        ClarifyReason.PENDING_IS_DELETE -> "La propuesta pendiente es borrar ese gasto. Confirmala o cancelala; si querés otra cosa, decímelo después."
         ClarifyReason.NOTHING_TO_REVISE -> "No tengo ninguna propuesta pendiente para corregir. Decime qué querés cargar, editar o borrar."
     }
 }

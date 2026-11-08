@@ -36,7 +36,7 @@ Ejemplos:
 "cuanto gaste este mes en comida" -> {"action":"QUERY","metric":"SUM","period":"THIS_MONTH","from":"","to":"","category":"FOOD"}
 "cuantos gastos tuve esta semana" -> {"action":"QUERY","metric":"COUNT","period":"THIS_WEEK","from":"","to":"","category":"ALL"}
 "cuanto gaste en total" -> {"action":"QUERY","metric":"SUM","period":"ALL","from":"","to":"","category":"ALL"}
-"cuanto gaste entre el 1 y el 7 de noviembre" -> {"action":"QUERY","metric":"SUM","period":"CUSTOM","from":"2026-11-01","to":"2026-11-07","category":"ALL"}
+"cuanto gaste entre el 1 y el 7 de ${today.month.getDisplayName(TextStyle.FULL, Locale("es"))}" -> {"action":"QUERY","metric":"SUM","period":"CUSTOM","from":"${today.withDayOfMonth(1)}","to":"${today.withDayOfMonth(7)}","category":"ALL"}
 "anota 12000 de cafe" -> {"action":"CREATE","amount":12000,"merchant":"Cafe","category":"${categories.firstOrNull()?.id ?: "ALL"}","date":"$today"}
 "borra el ultimo gasto" -> {"action":"DELETE","reference":"LAST","text":""}
 "cambia el monto del ultimo a 50000" -> {"action":"EDIT","reference":"LAST","text":"","field":"AMOUNT","new_value":"50000"}

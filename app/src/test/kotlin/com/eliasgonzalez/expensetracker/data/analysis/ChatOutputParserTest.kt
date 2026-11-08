@@ -82,8 +82,20 @@ class ChatOutputParserTest {
     }
 
     @Test
-    fun `una fecha mal escrita se ignora en vez de romper`() {
-        val q = parse("""{"action":"QUERY","metric":"SUM","period":"CUSTOM","from":"ayer","to":"2026-11-08","category":"ALL"}""") as ChatIntent.Query
-        assertEquals(null, q.from); assertEquals(LocalDate.of(2026, 11, 8), q.to)
+    fun `una fecha presente pero ilegible es ilegible, no hoy ni sin limite`() {
+        assertTrue(parse("""{"action":"CREATE","amount":5,"merchant":"x","category":"FOOD","date":"ayer"}""") is ChatIntent.Unreadable)
+        assertTrue(parse("""{"action":"QUERY","metric":"SUM","period":"CUSTOM","from":"3 de noviembre","to":"2026-11-09","category":"ALL"}""") is ChatIntent.Unreadable)
+        // vacio sigue significando "no hay fecha" (hoy al crear)
+        assertEquals(null, (parse("""{"action":"CREATE","amount":5,"merchant":"x","category":"FOOD","date":""}""") as ChatIntent.Create).date)
     }
+
+    @Test
+    fun `un importe en texto solo se acepta con formato de importe`() {
+        fun amount(v: String) = parse("""{"action":"CREATE","amount":"$v","merchant":"x","category":"FOOD","date":""}""")
+        assertEquals(80_000L, (amount("80.000") as ChatIntent.Create).amount)
+        assertEquals(1_250_000L, (amount("1.250.000") as ChatIntent.Create).amount)
+        assertEquals(5_000L, (amount("5000") as ChatIntent.Create).amount)
+        for (bad in listOf("1.5", "-5000", "2,5 mil", "abc", "12.34.56")) assertTrue("debia ser ilegible: $bad", amount(bad) is ChatIntent.Unreadable)
+    }
+
 }

@@ -58,16 +58,16 @@ class ChatAssistantTest {
         seed()
         val r = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, LocalDate.of(2026, 11, 7), today, null)) as ChatReply.Summary
         assertEquals(92_000L, r.total); assertEquals(2, r.count)
-        val t = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, null, null, "TRANSPORT")) as ChatReply.Summary
+        val t = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.ALL, null, null, "TRANSPORT")) as ChatReply.Summary
         assertEquals(80_000L, t.total)
     }
 
     @Test
     fun `contar, promediar y listar salen de los datos reales`() {
         seed()
-        assertEquals(3, (ask(ChatIntent.Query(ChatMetric.COUNT, ChatPeriod.CUSTOM, null, null, null)) as ChatReply.Summary).count)
-        assertEquals(40_666L, (ask(ChatIntent.Query(ChatMetric.AVERAGE, ChatPeriod.CUSTOM, null, null, null)) as ChatReply.Summary).total)
-        val list = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.CUSTOM, null, null, null)) as ChatReply.Listing
+        assertEquals(3, (ask(ChatIntent.Query(ChatMetric.COUNT, ChatPeriod.ALL, null, null, null)) as ChatReply.Summary).count)
+        assertEquals(40_666L, (ask(ChatIntent.Query(ChatMetric.AVERAGE, ChatPeriod.ALL, null, null, null)) as ChatReply.Summary).total)
+        val list = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.ALL, null, null, null)) as ChatReply.Listing
         assertEquals(listOf("Cafe Central", "Shell", "Netflix"), list.items.map { it.merchant })
     }
 
@@ -80,6 +80,61 @@ class ChatAssistantTest {
         // las fechas del modelo se ignoran fuera de CUSTOM: aunque invente un rango, manda el periodo
         val ignored = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.ALL, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 1), null)) as ChatReply.Summary
         assertEquals(3, ignored.count)
+    }
+
+    @Test
+    fun `un periodo propio sin ninguna fecha se pregunta y no suma todo el historial`() {
+        seed()
+        assertEquals(ChatReply.Clarify(ClarifyReason.INVALID_RANGE), ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, null, null, null)))
+        // abierto de un solo lado si es valido ("desde el 7")
+        assertEquals(2, (ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, LocalDate.of(2026, 11, 7), null, null)) as ChatReply.Summary).count)
+    }
+
+    @Test
+    fun `corregir el importe no borra signos ni decimales`() {
+        seed()
+        for (bad in listOf("-5000", "2,5 mil", "1.5", "mucho")) {
+            assertEquals(bad, ChatReply.Clarify(ClarifyReason.INVALID_AMOUNT), ask(ChatIntent.Edit(ExpenseRef.Last, EditableField.AMOUNT, bad)))
+        }
+        assertEquals(20_000L, (((ask(ChatIntent.Edit(ExpenseRef.Last, EditableField.AMOUNT, "20.000")) as ChatReply.Confirm).proposal) as ChatProposal.Edit).after.amount)
+    }
+
+    @Test
+    fun `la fecha de hoy nunca queda en el futuro, ni al crear ni al corregir, y manana se rechaza`() = runBlocking {
+        val p = (ask(ChatIntent.Create(1000, "x", null, null)) as ChatReply.Confirm).proposal as ChatProposal.Create
+        assertTrue(p.expense.occurredAt <= at(today, 15)) // now() de la prueba: 15:00
+        intent = ChatIntent.Revise(EditableField.DATE, today.toString())
+        val revised = assistant.ask(ChatRequest("hoy", today, categories, pending = p)) as ChatReply.Confirm
+        assertTrue("revisar a hoy no puede dar un instante futuro", (revised.proposal as ChatProposal.Create).expense.occurredAt <= at(today, 15))
+        assertEquals(ClarifyReason.INVALID_DATE, (ask(ChatIntent.Create(1000, "x", null, today.plusDays(1))) as ChatReply.Clarify).reason)
+    }
+
+    @Test
+    fun `por la manana la fecha de hoy es ahora y no el mediodia que todavia no llego`() = runBlocking {
+        val morning = at(today, 9)
+        val early = ChatAssistant(
+            interpreter = { intent }, expenses = repo, register = RegisterExpense(repo, activity), edit = EditExpense(repo, activity),
+            delete = DeleteExpense(repo, activity), zone = zone, now = { morning },
+        )
+        intent = ChatIntent.Create(1000, "x", null, null)
+        val created = (early.ask(ChatRequest("x", today, categories)) as ChatReply.Confirm).proposal as ChatProposal.Create
+        assertEquals(morning, created.expense.occurredAt)
+        intent = ChatIntent.Revise(EditableField.DATE, today.toString())
+        val revised = (early.ask(ChatRequest("hoy", today, categories, pending = created)) as ChatReply.Confirm).proposal as ChatProposal.Create
+        assertEquals("corregir a hoy tampoco puede quedar en el futuro", morning, revised.expense.occurredAt)
+        // y un dia pasado si queda a mediodia
+        intent = ChatIntent.Revise(EditableField.DATE, today.minusDays(1).toString())
+        val past = (early.ask(ChatRequest("ayer", today, categories, pending = created)) as ChatReply.Confirm).proposal as ChatProposal.Create
+        assertEquals(at(today.minusDays(1), 12), past.expense.occurredAt)
+    }
+
+    @Test
+    fun `la categoria se reconoce sin importar mayusculas ni acentos`() {
+        seed()
+        val cats = listOf(CategoryOption("FOOD", "Alimentación"), CategoryOption("OTHER", "Otros"))
+        intent = ChatIntent.Edit(ExpenseRef.Last, EditableField.CATEGORY, "alimentacion")
+        val r = runBlocking { assistant.ask(ChatRequest("x", today, cats)) } as ChatReply.Confirm
+        assertEquals("FOOD", ((r.proposal) as ChatProposal.Edit).after.categoryId)
     }
 
     @Test

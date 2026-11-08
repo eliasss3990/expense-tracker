@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.data.analysis
 
+import com.eliasgonzalez.expensetracker.domain.chat.ChatAmount
 import com.eliasgonzalez.expensetracker.domain.chat.ChatIntent
 import com.eliasgonzalez.expensetracker.domain.chat.ChatMetric
 import com.eliasgonzalez.expensetracker.domain.chat.ChatPeriod
@@ -47,6 +48,8 @@ internal object ChatOutputParser {
             }
         } catch (e: org.json.JSONException) {
             ChatIntent.Unreadable("json invalido")
+        } catch (e: DateUnreadable) {
+            ChatIntent.Unreadable("fecha ilegible")
         }
     }
 
@@ -68,13 +71,21 @@ internal object ChatOutputParser {
         val v = json.opt("amount")
         return when (v) {
             is Number -> v.toLong().takeIf { v.toDouble() == it.toDouble() }
-            is String -> v.filter(Char::isDigit).toLongOrNull()
+            is String -> ChatAmount.parse(v)
             else -> null
         }
     }
 
-    private fun date(json: JSONObject, key: String): LocalDate? =
-        runCatching { LocalDate.parse(json.optString(key).trim()) }.getOrNull()
+    /** Vacio o ausente = no hay fecha. Presente pero ilegible = [DateUnreadable]: no se degrada a "hoy" ni a "sin limite". */
+    private fun date(json: JSONObject, key: String): LocalDate? {
+        val text = json.optString(key).trim()
+        if (text.isEmpty()) return null
+        return runCatching { LocalDate.parse(text) }.getOrElse { throw DateUnreadable }
+    }
+
+    private object DateUnreadable : RuntimeException("fecha ilegible") {
+        private fun readResolve(): Any = DateUnreadable
+    }
 
     private inline fun <reified E : Enum<E>> enumOrNull(json: JSONObject, key: String): E? =
         enumValues<E>().firstOrNull { it.name == json.optString(key) }

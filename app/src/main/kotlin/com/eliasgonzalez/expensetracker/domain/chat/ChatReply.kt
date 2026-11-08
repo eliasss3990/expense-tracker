@@ -19,7 +19,7 @@ fun ChatProposal.summary(): String = when (this) {
 
 enum class ClarifyReason {
     NOT_FOUND, AMBIGUOUS_REFERENCE, INVALID_AMOUNT, INVALID_DATE, UNKNOWN_CATEGORY, DATE_NOT_EDITABLE,
-    INVALID_RANGE, UNREADABLE, EMPTY_PHRASE, NOTHING_TO_REVISE,
+    INVALID_RANGE, UNREADABLE, EMPTY_PHRASE, NOTHING_TO_REVISE, PENDING_IS_DELETE,
 }
 
 /** Respuesta estructurada: los textos los arma la UI; el dominio solo entrega hechos. */

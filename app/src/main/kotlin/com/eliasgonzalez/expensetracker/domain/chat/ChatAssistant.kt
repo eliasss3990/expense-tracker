@@ -67,6 +67,8 @@ class ChatAssistant(
 
     private fun query(q: ChatIntent.Query, today: LocalDate): ChatReply {
         val (from, to) = q.period.resolve(today, q.from, q.to)
+        // Un periodo propio sin ninguna fecha no es "todo el historial": es una consulta que no se entendio.
+        if (q.period == ChatPeriod.CUSTOM && from == null && to == null) return ChatReply.Clarify(ClarifyReason.INVALID_RANGE)
         if (from != null && to != null && from.isAfter(to)) return ChatReply.Clarify(ClarifyReason.INVALID_RANGE)
         val fromMs = from?.atStartOfDay(zone)?.toInstant()?.toEpochMilli() ?: Long.MIN_VALUE
         val toMs = to?.plusDays(1)?.atStartOfDay(zone)?.toInstant()?.toEpochMilli() ?: Long.MAX_VALUE
@@ -86,9 +88,9 @@ class ChatAssistant(
     private fun create(c: ChatIntent.Create, request: ChatRequest): ChatReply {
         if (c.amount !in 1..MAX_AMOUNT) return ChatReply.Clarify(ClarifyReason.INVALID_AMOUNT)
         val date = c.date ?: request.today
-        if (date.isAfter(request.today.plusDays(1)) || date.isBefore(MIN_DATE)) return ChatReply.Clarify(ClarifyReason.INVALID_DATE)
+        if (date.isAfter(request.today) || date.isBefore(MIN_DATE)) return ChatReply.Clarify(ClarifyReason.INVALID_DATE)
         val category = c.categoryId?.takeIf { id -> request.categories.any { it.id == id } } ?: CategoryIds.OTHER
-        val occurredAt = if (date == request.today) now() else date.atTime(NOON).atZone(zone).toInstant().toEpochMilli()
+        val occurredAt = instantOf(date, request.today)
         val draft = Expense(
             amount = c.amount,
             merchant = c.merchant.trim().take(MAX_MERCHANT).replaceFirstChar { it.uppercase() }.ifBlank { DEFAULT_MERCHANT },
@@ -119,14 +121,19 @@ class ChatAssistant(
             val fixed = applyField(pending.after, r.field, r.newValue, request)
             if (fixed == null) invalidField(r.field, r.newValue) else ChatReply.Confirm(ChatProposal.Edit(pending.before, fixed))
         }
-        is ChatProposal.Delete, null -> ChatReply.Clarify(ClarifyReason.NOTHING_TO_REVISE)
+        is ChatProposal.Delete -> ChatReply.Clarify(ClarifyReason.PENDING_IS_DELETE)
+        null -> ChatReply.Clarify(ClarifyReason.NOTHING_TO_REVISE)
     }
 
     private fun reviseDate(expense: Expense, value: String, request: ChatRequest): Expense? {
         val date = runCatching { LocalDate.parse(value.trim()) }.getOrNull() ?: return null
-        if (date.isAfter(request.today.plusDays(1)) || date.isBefore(MIN_DATE)) return null
-        return expense.copy(occurredAt = date.atTime(NOON).atZone(zone).toInstant().toEpochMilli())
+        if (date.isAfter(request.today) || date.isBefore(MIN_DATE)) return null
+        return expense.copy(occurredAt = instantOf(date, request.today))
     }
+
+    /** Un unico criterio para "fecha -> instante": hoy es AHORA (nunca el futuro); otro dia, a mediodia. */
+    private fun instantOf(date: LocalDate, today: LocalDate): Long =
+        if (date == today) now() else date.atTime(NOON).atZone(zone).toInstant().toEpochMilli()
 
     private fun invalidField(field: EditableField, value: String): ChatReply = when (field) {
         EditableField.AMOUNT -> ChatReply.Clarify(ClarifyReason.INVALID_AMOUNT)
@@ -137,9 +144,9 @@ class ChatAssistant(
 
     /** null = el valor no es valido para ese campo. */
     private fun applyField(base: Expense, field: EditableField, value: String, request: ChatRequest): Expense? = when (field) {
-        EditableField.AMOUNT -> value.filter(Char::isDigit).toLongOrNull()?.takeIf { it in 1..MAX_AMOUNT }?.let { base.copy(amount = it) }
+        EditableField.AMOUNT -> ChatAmount.parse(value)?.takeIf { it in 1..MAX_AMOUNT }?.let { base.copy(amount = it) }
         EditableField.MERCHANT -> value.trim().take(MAX_MERCHANT).takeIf(String::isNotBlank)?.let { base.copy(merchant = it) }
-        EditableField.CATEGORY -> request.categories.firstOrNull { it.id == value || it.label.equals(value, ignoreCase = true) }?.let { base.copy(categoryId = it.id) }
+        EditableField.CATEGORY -> request.categories.firstOrNull { it.id == value || NumericTokens.normalizeForMatch(it.label) == NumericTokens.normalizeForMatch(value) }?.let { base.copy(categoryId = it.id) }
         EditableField.DATE -> null
     }
 
