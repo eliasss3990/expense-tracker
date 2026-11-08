@@ -227,6 +227,22 @@ class DbMigrationTest {
     }
 
     @Test
+    fun `migrar de v3 a v4 crea la cola y la auditoria sin tocar los datos existentes`() {
+        createV2ByAlterWithData()
+        migrate(2) // queda en v3, con datos
+        val gastos = count("SELECT COUNT(*) FROM expenses")
+        val candidatos = count("SELECT COUNT(*) FROM candidates")
+
+        val ejecutadas = migrate(3)
+
+        val tablas = rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").map { it[0] }
+        assertTrue("analysis_queue" in tablas && "decision_audit" in tablas)
+        assertEquals(gastos, count("SELECT COUNT(*) FROM expenses"))
+        assertEquals(candidatos, count("SELECT COUNT(*) FROM candidates"))
+        assertTrue("la v4 solo debe crear, nunca modificar", ejecutadas.all { it.trimStart().startsWith("CREATE", ignoreCase = true) })
+    }
+
+    @Test
     fun `migrar de v2 a v3 crea y siembra el catalogo con la lista congelada`() {
         forEachV2Variant { variante ->
             migrate(2)
@@ -323,12 +339,15 @@ class DbMigrationTest {
     }
 
     @Test
-    fun `una instalacion nueva crea las cuatro tablas y siembra las categorias vigentes`() {
+    fun `una instalacion nueva crea las seis tablas y siembra las categorias vigentes`() {
         create(CatalogDefaults.categories)
 
         val tablas = rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
             .map { it[0] }
-        assertEquals(listOf("activity_log", "candidates", "catalog_entries", "expenses"), tablas)
+        assertEquals(
+            listOf("activity_log", "analysis_queue", "candidates", "catalog_entries", "decision_audit", "expenses"),
+            tablas,
+        )
         assertEquals(CatalogDefaults.categories, catalogFromDb())
     }
 
@@ -392,7 +411,14 @@ class DbMigrationTest {
         // que una base v1 tambien debe pasar por el, este test (que recorre todas) lo ve.
         for (oldVersion in 1 until DbSchema.VERSION) {
             reopen()
-            if (oldVersion == 1) createV1WithData() else createV2ByAlterWithData()
+            when (oldVersion) {
+                1 -> createV1WithData()
+                2 -> createV2ByAlterWithData()
+                else -> { // v3 real: una v2 ya migrada
+                    createV2ByAlterWithData()
+                    migrate(2)
+                }
+            }
 
             migrate(oldVersion)
 
@@ -402,8 +428,8 @@ class DbMigrationTest {
     }
 
     @Test
-    fun `la version del esquema es la 3 (si cambia, hay que agregar su bloque y su test)`() {
-        assertEquals(3, DbSchema.VERSION)
+    fun `la version del esquema es la 4 (si cambia, hay que agregar su bloque y su test)`() {
+        assertEquals(4, DbSchema.VERSION)
     }
 
     // --- transaccion: lo que garantiza Android y la migracion necesita ------------

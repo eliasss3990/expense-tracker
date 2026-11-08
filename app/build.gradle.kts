@@ -23,8 +23,8 @@ android {
         applicationId = "com.eliasgonzalez.expensetracker"
         minSdk = 26
         targetSdk = 37
-        versionCode = 14
-        versionName = "0.5.7"
+        versionCode = 15
+        versionName = "0.6.0"
     }
 
     buildFeatures {
@@ -65,6 +65,8 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // Runtime del modelo local (solo lo conoce data/analysis/LiteRtTransactionInterpreter). Version fijada, no latest.release.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.1")
     implementation(platform("androidx.compose:compose-bom:2026.08.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
@@ -76,4 +78,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     // SQLite real en la JVM para probar las migraciones de la base sin emulador (DbMigrationTest).
     testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
+    // org.json real en la JVM: el de android.jar es un stub que lanza "not mocked" (InterpretationCodec).
+    testImplementation("org.json:json:20240303")
 }
