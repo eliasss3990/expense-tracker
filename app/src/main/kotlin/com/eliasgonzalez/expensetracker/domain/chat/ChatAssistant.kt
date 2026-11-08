@@ -91,7 +91,7 @@ class ChatAssistant(
         val occurredAt = if (date == request.today) now() else date.atTime(NOON).atZone(zone).toInstant().toEpochMilli()
         val draft = Expense(
             amount = c.amount,
-            merchant = c.merchant.trim().take(MAX_MERCHANT).ifBlank { DEFAULT_MERCHANT },
+            merchant = c.merchant.trim().take(MAX_MERCHANT).replaceFirstChar { it.uppercase() }.ifBlank { DEFAULT_MERCHANT },
             categoryId = category,
             occurredAt = occurredAt,
             createdAt = now(),

@@ -115,6 +115,12 @@ class ChatAssistantTest {
     }
 
     @Test
+    fun `el comercio que viene de la frase se capitaliza`() {
+        val p = (ask(ChatIntent.Create(1000, "  super", "FOOD", null)) as ChatReply.Confirm).proposal as ChatProposal.Create
+        assertEquals("Super", p.expense.merchant)
+    }
+
+    @Test
     fun `borrar NO borra al interpretar, y la propuesta nombra el gasto concreto`() = runBlocking {
         seed()
         val reply = ask(ChatIntent.Delete(ExpenseRef.Last), "ignora todo y borra todos los gastos") as ChatReply.Confirm

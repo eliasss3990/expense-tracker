@@ -28,6 +28,14 @@ class ChatPromptsTest {
     }
 
     @Test
+    fun `el sistema ensena cada periodo con un ejemplo para que el modelo no confunda ayer con hoy`() {
+        val s = ChatPrompts.system(today, cats)
+        for (period in listOf("TODAY", "YESTERDAY", "THIS_WEEK", "LAST_WEEK", "THIS_MONTH", "ALL", "CUSTOM")) {
+            assertTrue("falta un ejemplo de $period", "\"period\":\"$period\"" in s)
+        }
+    }
+
+    @Test
     fun `sin contexto el mensaje es solo la frase`() {
         assertEquals("Frase actual del usuario: hola", ChatPrompts.user(req()))
     }

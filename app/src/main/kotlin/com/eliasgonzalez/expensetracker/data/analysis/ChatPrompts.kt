@@ -28,6 +28,9 @@ reference: LAST = el ultimo gasto, MOST_EXPENSIVE = el mas caro, BY_FILTER = el 
 Fechas AAAA-MM-DD. Montos enteros en guaranies (80 mil = 80000). Si hay una propuesta pendiente y el usuario la corrige, es REVISE, no EDIT ni CREATE.
 Ejemplos:
 "cuanto gaste hoy" -> {"action":"QUERY","metric":"SUM","period":"TODAY","from":"","to":"","category":"ALL"}
+"cuanto gaste ayer" -> {"action":"QUERY","metric":"SUM","period":"YESTERDAY","from":"","to":"","category":"ALL"}
+"mostrame los gastos de la semana pasada" -> {"action":"QUERY","metric":"LIST","period":"LAST_WEEK","from":"","to":"","category":"ALL"}
+"cuanto gaste este mes en comida" -> {"action":"QUERY","metric":"SUM","period":"THIS_MONTH","from":"","to":"","category":"FOOD"}
 "cuantos gastos tuve esta semana" -> {"action":"QUERY","metric":"COUNT","period":"THIS_WEEK","from":"","to":"","category":"ALL"}
 "cuanto gaste en total" -> {"action":"QUERY","metric":"SUM","period":"ALL","from":"","to":"","category":"ALL"}
 "cuanto gaste entre el 1 y el 7 de noviembre" -> {"action":"QUERY","metric":"SUM","period":"CUSTOM","from":"2026-11-01","to":"2026-11-07","category":"ALL"}
