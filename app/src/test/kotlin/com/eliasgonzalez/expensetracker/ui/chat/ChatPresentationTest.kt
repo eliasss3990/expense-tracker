@@ -56,6 +56,24 @@ class ChatPresentationTest {
     }
 
     @Test
+    fun `la propuesta muestra la descripcion aparte del comercio y se omite si no hay`() {
+        val withDesc = exp(85_000, "Shell", "TRANSPORT").copy(description = "Nafta")
+        val t = p.text(ChatReply.Confirm(ChatProposal.Create(withDesc)))
+        assertTrue("• Descripción: Nafta\n• Comercio: Shell" in t)
+        assertTrue("Descripción" !in p.text(ChatReply.Confirm(ChatProposal.Create(exp()))))
+        assertEquals("Listo, cargué Nafta por ₲85.000.", p.confirmed(ConfirmResult.DONE, ChatProposal.Create(withDesc)))
+        assertTrue("Nafta · Shell" in p.text(ChatReply.Detail(withDesc)))
+    }
+
+    @Test
+    fun `editar la descripcion se ve como un cambio`() {
+        val before = exp(); val after = before.copy(description = "Nafta")
+        val t = p.text(ChatReply.Confirm(ChatProposal.Edit(before, after)))
+        assertTrue("Descripción: — → Nafta" in t)
+        assertTrue("Descripción" !in p.text(ChatReply.Confirm(ChatProposal.Edit(before, before.copy(amount = 1)))))
+    }
+
+    @Test
     fun `la propuesta de editar marca solo lo que cambia`() {
         val before = exp(); val after = before.copy(amount = 50_000)
         val t = p.text(ChatReply.Confirm(ChatProposal.Edit(before, after)))

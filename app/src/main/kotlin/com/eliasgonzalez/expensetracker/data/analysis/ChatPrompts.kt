@@ -25,7 +25,7 @@ QUERY: consultar total (SUM), cantidad (COUNT), lista (LIST) o promedio (AVERAGE
 DESCRIBE: hablar de un gasto concreto. CREATE: cargar un gasto nuevo. EDIT: cambiar un gasto que ya existe.
 DELETE: borrar UN gasto. REVISE: corregir la propuesta pendiente (cuando el usuario dice "no, era...", "mejor...", "cambia el monto a..."). CANCEL: el usuario abandona la propuesta pendiente ("olvidalo", "cancela"). CATEGORY_CREATE / CATEGORY_RENAME / CATEGORY_DELETE: crear, renombrar o borrar una CATEGORIA (no un gasto), siempre por su nombre. REVISE_NAME: corregir el NOMBRE de una propuesta de categoria pendiente. HELP: el usuario PREGUNTA que podes hacer o si podes hacer algo ("puedes...?", "podes...?"; una pregunta NO es una orden y no se ejecuta), o si podes hacer algo que NO es consultar, cargar, editar o borrar gastos (por ejemplo crear categorias, cambiar ajustes). SMALLTALK: solo saludos, agradecimientos o charla breve.
 reference: LAST = el ultimo gasto, MOST_EXPENSIVE = el mas caro, BY_FILTER = el que se nombra con una palabra (comercio) en "text".
-Fechas AAAA-MM-DD. Montos enteros en guaranies (80 mil = 80000). Si hay una propuesta pendiente y el usuario la corrige, es REVISE, no EDIT ni CREATE.
+En CREATE: merchant es el LUGAR o comercio donde se pago y SOLO si el usuario lo nombra ("en Shell", "en Stock"); si no lo nombra va "". description es QUE se compro o para que ("nafta", "pan", "cafe"). Nunca pongas el producto en merchant. Fechas AAAA-MM-DD. Montos enteros en guaranies (80 mil = 80000). Si hay una propuesta pendiente y el usuario la corrige, es REVISE, no EDIT ni CREATE.
 Ejemplos:
 "cuanto gaste hoy" -> {"action":"QUERY","metric":"SUM","period":"TODAY","from":"","to":"","category":"ALL"}
 "cuantos gastos tengo" -> {"action":"QUERY","metric":"COUNT","period":"ALL","from":"","to":"","category":"ALL"}
@@ -37,7 +37,8 @@ Ejemplos:
 "cuantos gastos tuve esta semana" -> {"action":"QUERY","metric":"COUNT","period":"THIS_WEEK","from":"","to":"","category":"ALL"}
 "cuanto gaste en total" -> {"action":"QUERY","metric":"SUM","period":"ALL","from":"","to":"","category":"ALL"}
 "cuanto gaste entre el 1 y el 7 de ${today.month.getDisplayName(TextStyle.FULL, Locale("es"))}" -> {"action":"QUERY","metric":"SUM","period":"CUSTOM","from":"${today.withDayOfMonth(1)}","to":"${today.withDayOfMonth(7)}","category":"ALL"}
-"anota 12000 de cafe" -> {"action":"CREATE","amount":12000,"merchant":"Cafe","category":"${categories.firstOrNull()?.id ?: "ALL"}","date":"$today"}
+"anota 12000 de cafe" -> {"action":"CREATE","amount":12000,"merchant":"","description":"Cafe","category":"${categories.firstOrNull()?.id ?: "ALL"}","date":"$today"}
+"pague 85000 en Shell de nafta" -> {"action":"CREATE","amount":85000,"merchant":"Shell","description":"Nafta","category":"${categories.firstOrNull()?.id ?: "ALL"}","date":"$today"}
 "borra el ultimo gasto" -> {"action":"DELETE","reference":"LAST","text":""}
 "cambia el monto del ultimo a 50000" -> {"action":"EDIT","reference":"LAST","text":"","field":"AMOUNT","new_value":"50000"}
 (con propuesta pendiente) "no, era 20000" -> {"action":"REVISE","field":"AMOUNT","new_value":"20000"}

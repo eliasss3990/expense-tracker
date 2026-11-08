@@ -54,6 +54,16 @@ class ChatOutputParserTest {
     }
 
     @Test
+    fun `lo que se compro va en la descripcion y el lugar en el comercio`() {
+        val c = parse("""{"action":"CREATE","amount":85000,"merchant":"Shell","description":"Nafta","category":"FOOD","date":""}""") as ChatIntent.Create
+        assertEquals("Shell", c.merchant); assertEquals("Nafta", c.description)
+        val noPlace = parse("""{"action":"CREATE","amount":12000,"merchant":"","description":"Cafe","category":"FOOD","date":""}""") as ChatIntent.Create
+        assertEquals("", noPlace.merchant); assertEquals("Cafe", noPlace.description)
+        // una salida vieja sin el campo sigue siendo valida
+        assertEquals("", (parse("""{"action":"CREATE","amount":5,"merchant":"x","category":"FOOD","date":""}""") as ChatIntent.Create).description)
+    }
+
+    @Test
     fun `editar y corregir`() {
         assertEquals(
             ChatIntent.Edit(ExpenseRef.Last, EditableField.AMOUNT, "50000"),

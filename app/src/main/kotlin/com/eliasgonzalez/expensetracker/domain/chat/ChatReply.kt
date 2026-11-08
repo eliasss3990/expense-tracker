@@ -19,8 +19,8 @@ sealed interface ChatProposal {
 
 /** Una linea con lo que haria la propuesta; la usan el contexto del modelo y los logs, no la UI. */
 fun ChatProposal.summary(): String = when (this) {
-    is ChatProposal.Create -> "cargar ${expense.merchant} ${expense.amount} en ${expense.categoryId}"
-    is ChatProposal.Edit -> "editar ${before.merchant}: monto ${before.amount} a ${after.amount}, categoria ${before.categoryId} a ${after.categoryId}, comercio ${before.merchant} a ${after.merchant}"
+    is ChatProposal.Create -> "cargar ${expense.description.ifBlank { expense.merchant }} ${expense.amount} en ${expense.categoryId}"
+    is ChatProposal.Edit -> "editar ${before.merchant}: monto ${before.amount} a ${after.amount}, categoria ${before.categoryId} a ${after.categoryId}, comercio ${before.merchant} a ${after.merchant}, descripcion ${before.description} a ${after.description}"
     is ChatProposal.Delete -> "borrar ${expense.merchant} ${expense.amount}"
     is ChatProposal.CategoryCreate -> "crear la categoria $label"
     is ChatProposal.CategoryRename -> "renombrar la categoria ${before.label} a $newLabel"

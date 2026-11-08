@@ -66,6 +66,14 @@ class ChatPromptsTest {
     }
 
     @Test
+    fun `el prompt separa el producto del comercio con ejemplos`() {
+        val s = ChatPrompts.system(today, cats)
+        assertTrue("Nunca pongas el producto en merchant" in s)
+        assertTrue("\"merchant\":\"\",\"description\":\"Cafe\"" in s)
+        assertTrue("\"merchant\":\"Shell\",\"description\":\"Nafta\"" in s)
+    }
+
+    @Test
     fun `sin contexto el mensaje es solo la frase`() {
         assertEquals("Frase actual del usuario: hola", ChatPrompts.user(req()))
     }

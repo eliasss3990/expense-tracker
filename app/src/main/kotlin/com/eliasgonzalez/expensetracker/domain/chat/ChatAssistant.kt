@@ -61,7 +61,7 @@ class ChatAssistant(
             is ChatProposal.Edit -> if (expenses.findById(proposal.before.id) != proposal.before) {
                 ConfirmResult.STALE
             } else {
-                edit(proposal.after.id, proposal.after.amount, proposal.after.merchant, proposal.after.categoryId)
+                edit(proposal.after.id, proposal.after.amount, proposal.after.merchant, proposal.after.categoryId, proposal.after.description)
                 ConfirmResult.DONE
             }
             is ChatProposal.Delete -> if (expenses.findById(proposal.expense.id) != proposal.expense) {
@@ -195,6 +195,7 @@ class ChatAssistant(
         val draft = Expense(
             amount = c.amount,
             merchant = c.merchant.trim().take(MAX_MERCHANT).replaceFirstChar { it.uppercase() }.ifBlank { DEFAULT_MERCHANT },
+            description = c.description.trim().take(MAX_DESCRIPTION).replaceFirstChar { it.uppercase() },
             categoryId = category,
             occurredAt = occurredAt,
             createdAt = now(),
@@ -242,13 +243,14 @@ class ChatAssistant(
         EditableField.AMOUNT -> ChatReply.Clarify(ClarifyReason.INVALID_AMOUNT)
         EditableField.CATEGORY -> ChatReply.Clarify(ClarifyReason.UNKNOWN_CATEGORY, value.take(MAX_MERCHANT))
         EditableField.DATE -> ChatReply.Clarify(ClarifyReason.INVALID_DATE)
-        EditableField.MERCHANT -> ChatReply.Clarify(ClarifyReason.UNREADABLE)
+        EditableField.MERCHANT, EditableField.DESCRIPTION -> ChatReply.Clarify(ClarifyReason.UNREADABLE)
     }
 
     /** null = el valor no es valido para ese campo. */
     private fun applyField(base: Expense, field: EditableField, value: String, request: ChatRequest): Expense? = when (field) {
         EditableField.AMOUNT -> ChatAmount.parse(value)?.takeIf { it in 1..MAX_AMOUNT }?.let { base.copy(amount = it) }
         EditableField.MERCHANT -> value.trim().take(MAX_MERCHANT).takeIf(String::isNotBlank)?.let { base.copy(merchant = it) }
+        EditableField.DESCRIPTION -> value.trim().take(MAX_DESCRIPTION).takeIf(String::isNotBlank)?.let { base.copy(description = it.replaceFirstChar { c -> c.uppercase() }) }
         EditableField.CATEGORY -> request.categories.firstOrNull { it.id == value || NumericTokens.normalizeForMatch(it.label) == NumericTokens.normalizeForMatch(value) }?.let { base.copy(categoryId = it.id) }
         EditableField.DATE -> null
     }
@@ -289,7 +291,8 @@ class ChatAssistant(
         const val MAX_LIST = 20
         const val MAX_MERCHANT = 80
         const val MAX_REPLY = 300
-        const val DEFAULT_MERCHANT = "Gasto"
+        const val DEFAULT_MERCHANT = "Sin comercio"
+        const val MAX_DESCRIPTION = 120
         val NOON: java.time.LocalTime = java.time.LocalTime.NOON
         val MIN_DATE: LocalDate = LocalDate.of(2000, 1, 1)
     }

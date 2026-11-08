@@ -5,7 +5,7 @@ import java.time.LocalDate
 
 enum class ChatMetric { SUM, COUNT, LIST, AVERAGE }
 
-enum class EditableField { AMOUNT, MERCHANT, CATEGORY, DATE }
+enum class EditableField { AMOUNT, MERCHANT, DESCRIPTION, CATEGORY, DATE }
 
 /** A que gasto se refiere el usuario. Lo resuelve la APP contra sus datos; el modelo nunca ve ni elige ids. */
 sealed interface ExpenseRef {
@@ -28,7 +28,17 @@ sealed interface ChatIntent {
         val categoryId: String?,
     ) : ChatIntent
     data class Describe(val ref: ExpenseRef) : ChatIntent
-    data class Create(val amount: Long, val merchant: String, val categoryId: String?, val date: LocalDate?) : ChatIntent
+    /**
+     * [merchant] es el LUGAR donde se pago y solo si el usuario lo nombro ("en Shell"); [description] es QUE se compro ("nafta").
+     * Mezclarlos (guardar "nafta" como comercio) era el error original.
+     */
+    data class Create(
+        val amount: Long,
+        val merchant: String,
+        val categoryId: String?,
+        val date: LocalDate?,
+        val description: String = "",
+    ) : ChatIntent
     data class Edit(val ref: ExpenseRef, val field: EditableField, val newValue: String) : ChatIntent
     data class Delete(val ref: ExpenseRef) : ChatIntent
     data class SmallTalk(val reply: String) : ChatIntent

@@ -36,6 +36,16 @@ class ChatSchemaTest {
     }
 
     @Test
+    fun `cargar distingue el comercio de la descripcion y se puede editar la descripcion`() {
+        val create = branches().first { it.actionName() == "CREATE" }.getJSONObject("properties")
+        assertTrue(create.has("merchant") && create.has("description"))
+        for (name in listOf("EDIT", "REVISE")) {
+            val fields = branches().first { it.actionName() == name }.getJSONObject("properties").getJSONObject("field").getJSONArray("enum").strings()
+            assertTrue("DESCRIPTION" in fields)
+        }
+    }
+
+    @Test
     fun `no hay ninguna accion que apunte a todos los gastos`() {
         val refs = branches().filter { it.getJSONObject("properties").has("reference") }
         assertEquals(listOf("DESCRIBE", "EDIT", "DELETE"), refs.map { it.actionName() })

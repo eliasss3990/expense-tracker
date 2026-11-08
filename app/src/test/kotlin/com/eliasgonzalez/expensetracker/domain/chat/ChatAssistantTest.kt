@@ -170,6 +170,26 @@ class ChatAssistantTest {
     }
 
     @Test
+    fun `lo que se compro queda en la descripcion y sin lugar el comercio es neutro, no el producto`() = runBlocking {
+        val p = (ask(ChatIntent.Create(12_000, "", "FOOD", null, description = "  cafe ")) as ChatReply.Confirm).proposal as ChatProposal.Create
+        assertEquals("Cafe", p.expense.description); assertEquals("Sin comercio", p.expense.merchant)
+        val withPlace = (ask(ChatIntent.Create(85_000, "shell", "FOOD", null, description = "nafta")) as ChatReply.Confirm).proposal as ChatProposal.Create
+        assertEquals("Shell", withPlace.expense.merchant); assertEquals("Nafta", withPlace.expense.description)
+        assistant.confirm(withPlace)
+        assertEquals("Nafta", repo.expenses.value.single().description)
+    }
+
+    @Test
+    fun `editar la descripcion se propone y se guarda al confirmar`() = runBlocking {
+        seed()
+        val p = (ask(ChatIntent.Edit(ExpenseRef.Last, EditableField.DESCRIPTION, "sandwich")) as ChatReply.Confirm).proposal as ChatProposal.Edit
+        assertEquals("", p.before.description); assertEquals("Sandwich", p.after.description)
+        assertEquals(ConfirmResult.DONE, assistant.confirm(p))
+        assertEquals("Sandwich", repo.expenses.value.first { it.merchant == "Cafe Central" }.description)
+        assertEquals("Cafe Central", repo.expenses.value.first { it.description == "Sandwich" }.merchant)
+    }
+
+    @Test
     fun `el comercio que viene de la frase se capitaliza`() {
         val p = (ask(ChatIntent.Create(1000, "  super", "FOOD", null)) as ChatReply.Confirm).proposal as ChatProposal.Create
         assertEquals("Super", p.expense.merchant)

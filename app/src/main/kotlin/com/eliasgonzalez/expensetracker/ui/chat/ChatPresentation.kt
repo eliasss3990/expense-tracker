@@ -35,7 +35,7 @@ internal class ChatPresentation(
 
     fun confirmed(result: ConfirmResult, proposal: ChatProposal): String = when (result) {
         ConfirmResult.DONE -> when (proposal) {
-            is ChatProposal.Create -> "Listo, cargué ${proposal.expense.merchant} por ${money(proposal.expense.amount)}."
+            is ChatProposal.Create -> "Listo, cargué ${proposal.expense.description.ifBlank { proposal.expense.merchant }} por ${money(proposal.expense.amount)}."
             is ChatProposal.Edit -> "Listo, actualicé ${proposal.after.merchant}."
             is ChatProposal.Delete -> "Listo, borré ${proposal.expense.merchant} (${money(proposal.expense.amount)})."
             is ChatProposal.CategoryCreate -> "Listo, creé la categoría ${proposal.label}."
@@ -89,7 +89,7 @@ internal class ChatPresentation(
     }
 
     private fun describe(e: Expense) =
-        "${e.merchant} — ${money(e.amount)}, ${categoryLabel(e.categoryId)}, ${dateTime.format(Instant.ofEpochMilli(e.occurredAt))}."
+        (if (e.description.isBlank()) "" else "${e.description} · ") + "${e.merchant} — ${money(e.amount)}, ${categoryLabel(e.categoryId)}, ${dateTime.format(Instant.ofEpochMilli(e.occurredAt))}."
 
     private fun proposal(p: ChatProposal): String = when (p) {
         is ChatProposal.Create -> "¿Son correctos los datos?\n" + fields(p.expense) + "\nSi algo está mal, decime qué cambiar."
@@ -101,7 +101,13 @@ internal class ChatPresentation(
         is ChatProposal.CategoryDeactivate ->
             "La categoría ${p.entry.label} ya tiene gastos, así que no se puede borrar. ¿La desactivo?\nDeja de aparecer para elegir, pero tus gastos anteriores la conservan."
         is ChatProposal.Edit -> buildString {
-            append("¿Hago este cambio?\n• Comercio: ${p.before.merchant}")
+            append("¿Hago este cambio?\n")
+            if (p.before.description.isNotBlank() || p.after.description != p.before.description) {
+                append("• Descripción: ${p.before.description.ifBlank { "—" }}")
+                if (p.after.description != p.before.description) append(" → ${p.after.description.ifBlank { "—" }}")
+                append("\n")
+            }
+            append("• Comercio: ${p.before.merchant}")
             if (p.after.merchant != p.before.merchant) append(" → ${p.after.merchant}")
             append("\n• Monto: ${money(p.before.amount)}")
             if (p.after.amount != p.before.amount) append(" → ${money(p.after.amount)}")
@@ -112,7 +118,7 @@ internal class ChatPresentation(
     }
 
     private fun fields(e: Expense) =
-        "• Comercio: ${e.merchant}\n• Monto: ${money(e.amount)}\n• Categoría: ${categoryLabel(e.categoryId)}\n• Fecha: ${dateTime.format(Instant.ofEpochMilli(e.occurredAt))}"
+        (if (e.description.isBlank()) "" else "• Descripción: ${e.description}\n") + "• Comercio: ${e.merchant}\n• Monto: ${money(e.amount)}\n• Categoría: ${categoryLabel(e.categoryId)}\n• Fecha: ${dateTime.format(Instant.ofEpochMilli(e.occurredAt))}"
 
     private fun clarify(c: ChatReply.Clarify): String = when (c.reason) {
         ClarifyReason.NOT_FOUND -> if (c.detail != null) "No encontré ningún gasto de \"${c.detail}\"." else "No encontré ese gasto."

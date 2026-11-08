@@ -30,6 +30,7 @@ internal object ChatOutputParser {
                 "CREATE" -> ChatIntent.Create(
                     amount = amount(json) ?: return ChatIntent.Unreadable("amount"),
                     merchant = json.optString("merchant"),
+                    description = json.optString("description"),
                     categoryId = json.optString("category").takeIf { it.isNotBlank() && it != ChatSchema.ALL },
                     date = date(json, "date"),
                 )
