@@ -50,6 +50,14 @@ class ChatPromptsTest {
     }
 
     @Test
+    fun `preguntar si se puede hacer algo es HELP y no la accion misma`() {
+        val s = ChatPrompts.system(today, cats)
+        assertTrue("\"puedes crear categorias?\" -> {\"action\":\"HELP\"}" in s)
+        assertTrue("\"podes borrar gastos?\" -> {\"action\":\"HELP\"}" in s)
+        assertTrue("una pregunta NO es una orden" in s)
+    }
+
+    @Test
     fun `el sistema ensena las acciones de categorias con un ejemplo cada una`() {
         val s = ChatPrompts.system(today, cats)
         for (a in listOf("CATEGORY_CREATE", "CATEGORY_RENAME", "CATEGORY_DELETE", "REVISE_NAME")) {
