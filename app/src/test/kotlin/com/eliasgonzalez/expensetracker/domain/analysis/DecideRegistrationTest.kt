@@ -35,8 +35,8 @@ class DecideRegistrationTest {
 
     private val purchase = notification("Compra aprobada por Gs. 85.000 en Supermercado Real. Saldo disponible: Gs. 1.200.000.")
 
-    private fun parsed(amount: Long = 85_000, currency: String = "PYG", merchant: String = "Supermercado Real", confident: Boolean = true) =
-        ParserEvidence.Parsed(ParserSnapshot(amount, currency, merchant, confident, "p"))
+    private fun parsed(amount: Long = 85_000, currency: String = "PYG", merchant: String = "Supermercado Real", confident: Boolean = true, curated: Boolean = true) =
+        ParserEvidence.Parsed(ParserSnapshot(amount, currency, merchant, confident, "p", curated = curated))
 
     // --- el camino feliz y el caso que la rama anterior no resolvia ---
 
@@ -232,5 +232,30 @@ class DecideRegistrationTest {
     fun `una fuente no confiable nunca se registra sola`() {
         val d = decide(purchase, parsed(), both(interp()), RegistrationPolicy(SourceTrust.UNTRUSTED))
         assertEquals(REVIEW, d.outcome)
+    }
+
+    @Test
+    fun `un buzon con el parser generico NO curado no se registra solo`() {
+        // Cualquiera puede mandar un mail con "Compra por Gs. 85.000": el generico lo "reconoce".
+        val d = decide(purchase, parsed(curated = false), both(interp()), RegistrationPolicy(SourceTrust.MAILBOX))
+        assertEquals(REVIEW, d.outcome)
+        assertTrue(UNTRUSTED_SOURCE in d.reasons)
+    }
+
+    @Test
+    fun `una app de banco con el parser generico si puede registrarse sola`() {
+        val d = decide(purchase, parsed(curated = false), both(interp()), bank)
+        assertEquals(AUTO_REGISTER, d.outcome)
+    }
+
+    @Test
+    fun `descartar exige que ninguna de las dos pasadas haya dudado`() {
+        val refundWithDoubt = interp(direction = MoneyDirection.REFUND, doubts = setOf(ModelDoubt.AMBIGUOUS_DIRECTION))
+        val refundClear = interp(direction = MoneyDirection.REFUND)
+        for (results in listOf(both(refundWithDoubt, refundClear), both(refundClear, refundWithDoubt))) {
+            val d = decide(purchase, ParserEvidence.NoParser, results, bank)
+            assertEquals(REVIEW, d.outcome)
+            assertTrue(MODEL_DOUBT in d.reasons)
+        }
     }
 }

@@ -4,6 +4,7 @@ package com.eliasgonzalez.expensetracker.data.local
 internal interface SqlRow {
     fun long(column: String): Long
     fun longOrNull(column: String): Long?
+    fun doubleOrNull(column: String): Double?
     fun string(column: String): String
     fun stringOrNull(column: String): String?
 }

@@ -54,6 +54,8 @@ class ProcessAnalysisQueue(
     private val requireCrossCheck: Boolean = true,
     private val maxAttempts: Int = 3,
     private val retentionMillis: Long = 30L * 24 * 60 * 60 * 1000,
+    /** Pide un nuevo drain dentro de N ms: sin esto un reintento esperaria al proximo aviso o a reiniciar la app. */
+    private val scheduleRetry: (delayMillis: Long) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val drainMutex = Mutex()
@@ -66,13 +68,48 @@ class ProcessAnalysisQueue(
     }
 
     suspend fun drain() = drainMutex.withLock {
-        val deferred = mutableSetOf<Long>()
+        giveUpExhausted()
+        val deferred = mutableMapOf<Long, Int>() // id -> numero de intento que acaba de fallar
         while (true) {
-            val item = queue.nextPending(deferred, maxAttempts) ?: break
+            val item = queue.nextPending(deferred.keys, maxAttempts) ?: break
             if (!queue.markProcessing(item.id)) continue
-            if (!process(item)) deferred += item.id
+            val finished = try {
+                process(item)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Una falla inesperada (disco lleno, base bloqueada) no debe tumbar la app ni frenar la cola.
+                AppLog.e(TAG, "evento=${AnalysisEventKey.short(item.event.key)} fallo inesperado: ${error.javaClass.simpleName}", error)
+                runCatching { queue.markRetry(item.id, error.javaClass.simpleName) }
+                false
+            }
+            if (!finished) deferred[item.id] = item.attempts + 1
+        }
+        // Lo que gasto su ultimo intento en esta pasada no puede quedar huerfano.
+        giveUpExhausted()
+        if (deferred.isNotEmpty() && queue.nextPending(emptySet(), maxAttempts) != null) {
+            scheduleRetry(retryDelayMillis(deferred.values.max()))
         }
     }
+
+    /** Un item que agoto sus intentos se cierra con el mismo respaldo que una falla del modelo. */
+    private suspend fun giveUpExhausted() {
+        while (true) {
+            val item = queue.nextExhausted(maxAttempts) ?: break
+            try {
+                giveUp(item, modeProvider.currentMode(), "AttemptsExhausted")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Si ni siquiera se puede cerrar, no insistir en un bucle: se vuelve a intentar en el proximo drain.
+                AppLog.e(TAG, "no se pudo cerrar un evento agotado: ${error.javaClass.simpleName}", error)
+                break
+            }
+        }
+    }
+
+    private fun retryDelayMillis(attempt: Int): Long =
+        minOf(RETRY_BASE_MILLIS shl (attempt - 1).coerceIn(0, 20), RETRY_MAX_MILLIS)
 
     /** true si el item quedo terminado; false si se reintentara mas tarde. */
     private suspend fun process(item: QueuedAnalysis): Boolean {
@@ -106,7 +143,14 @@ class ProcessAnalysisQueue(
             AppLog.w(TAG, "evento=${AnalysisEventKey.short(event.key)} base sin cargar, se reintenta")
             return false
         }
-        record(event, mode, decision, effect, results, null, category)
+        // El efecto YA se aplico: si la auditoria falla no se reintenta el efecto, solo se deja el rastro en el log.
+        try {
+            record(event, mode, decision, effect, results, null, category)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            AppLog.e(TAG, "evento=${AnalysisEventKey.short(event.key)} no se pudo auditar: ${error.javaClass.simpleName}", error)
+        }
         queue.markDone(item.id)
         return true
     }
@@ -129,8 +173,16 @@ class ProcessAnalysisQueue(
             AppLog.w(TAG, "evento=${AnalysisEventKey.short(event.key)} el modelo fallo (intento $attemptNumber/$maxAttempts): $errorClass")
             return false
         }
-        // Agotados los reintentos: nunca perder el aviso. Con parser, sale el candidato de siempre
-        // (salvo en Sombra, donde el flujo de siempre ya lo creo al llegar).
+        giveUp(item, mode, errorClass)
+        return true
+    }
+
+    /**
+     * Agotados los reintentos: nunca perder el aviso. Con parser, sale el candidato de siempre (salvo en
+     * Sombra, donde el flujo de siempre ya lo creo al llegar).
+     */
+    private suspend fun giveUp(item: QueuedAnalysis, mode: AnalysisMode, errorClass: String) {
+        val event = item.event
         val parser = (event.parser as? ParserEvidence.Parsed)?.snapshot
         val effect = when {
             mode == AnalysisMode.SHADOW -> AppliedEffect(DecisionEffect.SHADOW_ONLY)
@@ -138,14 +190,20 @@ class ProcessAnalysisQueue(
             else -> {
                 val candidate = candidateFrom(
                     event, parser.amount, parser.currency, parser.merchant, parser.merchantConfident, parser.parserId,
+                    confidence = parser.confidence,
                 )
                 val id = createAndAnnounce(candidate)
                 AppliedEffect(if (id != null) DecisionEffect.FALLBACK_LEGACY else DecisionEffect.DUPLICATE, candidateId = id)
             }
         }
-        record(event, mode, null, effect, emptyList(), errorClass)
+        try {
+            record(event, mode, null, effect, emptyList(), errorClass)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            AppLog.e(TAG, "evento=${AnalysisEventKey.short(event.key)} no se pudo auditar: ${error.javaClass.simpleName}", error)
+        }
         queue.markGaveUp(item.id, errorClass)
-        return true
     }
 
     /** null = no terminal (hay que reintentar). */
@@ -195,6 +253,8 @@ class ProcessAnalysisQueue(
             merchant != null && decision.merchantConfident,
             parserId,
             category.categoryId,
+            // Es la confianza del PARSER; sin parser no hay un valor honesto que poner.
+            confidence = (event.parser as? ParserEvidence.Parsed)?.snapshot?.confidence ?: 0.0,
         )
         val id = createAndAnnounce(candidate) ?: return AppliedEffect(DecisionEffect.DUPLICATE)
         return AppliedEffect(DecisionEffect.CANDIDATE_CREATED, candidateId = id)
@@ -208,12 +268,14 @@ class ProcessAnalysisQueue(
         merchantConfident: Boolean,
         parserId: String,
         categoryId: String = CategoryIds.OTHER,
+        confidence: Double = 0.0,
     ) = ExpenseCandidate(
         amount = amount,
         currency = currency,
         merchant = merchant,
         merchantConfident = merchantConfident,
         categorySuggestion = categoryId,
+        confidence = confidence,
         occurredAt = event.notification.timestamp,
         detectedAt = event.notification.timestamp,
         sourceType = ExpenseSource.NOTIFICATION,
@@ -268,6 +330,11 @@ class ProcessAnalysisQueue(
                 "categoria=${category?.let { "${it.categoryId}/${it.source}" } ?: "-"} modelo=${results.firstOrNull()?.modelId ?: "-"} ms=${results.joinToString("+") { it.durationMillis.toString() }.ifEmpty { "-" }}" +
                 (errorClass?.let { " error=$it" } ?: ""),
         )
+    }
+
+    private companion object {
+        const val RETRY_BASE_MILLIS = 60_000L
+        const val RETRY_MAX_MILLIS = 15 * 60_000L
     }
 
     private data class AppliedEffect(

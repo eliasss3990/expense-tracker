@@ -31,7 +31,16 @@ object ParserEngine {
         }
         val result = parse(context) ?: return ParserEvidence.NoParser
         return ParserEvidence.Parsed(
-            ParserSnapshot(result.amount, result.currency, result.merchant, result.merchantConfident, result.parserId)
+            ParserSnapshot(
+                amount = result.amount,
+                currency = result.currency,
+                merchant = result.merchant,
+                merchantConfident = result.merchantConfident,
+                parserId = result.parserId,
+                confidence = result.confidence,
+                // Solo un parser dedicado a un formato conocido es curado; el generico no.
+                curated = specific != null,
+            )
         )
     }
 }

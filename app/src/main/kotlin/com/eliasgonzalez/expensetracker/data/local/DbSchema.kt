@@ -65,6 +65,8 @@ internal object DbSchema {
             parser_currency TEXT,
             parser_merchant TEXT,
             parser_merchant_confident INTEGER,
+            parser_confidence REAL,
+            parser_curated INTEGER,
             trust TEXT NOT NULL,
             state TEXT NOT NULL,
             attempts INTEGER NOT NULL DEFAULT 0,

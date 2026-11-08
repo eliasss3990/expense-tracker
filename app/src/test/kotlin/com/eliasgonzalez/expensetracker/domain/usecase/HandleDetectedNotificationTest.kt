@@ -37,7 +37,7 @@ class HandleDetectedNotificationTest {
         return AnalysisEvent(AnalysisEventKey.of(n), n, parser, SourceTrust.BANK)
     }
 
-    private val parsed = ParserEvidence.Parsed(ParserSnapshot(85_000, "PYG", "Tienda", true, "p"))
+    private val parsed = ParserEvidence.Parsed(ParserSnapshot(85_000, "PYG", "Tienda", true, "p", confidence = 0.6))
 
     @Test
     fun `sin modelo listo es el flujo de siempre y no se encola`() = runTest {
@@ -78,5 +78,12 @@ class HandleDetectedNotificationTest {
         modelReady = false
         handler()(event(ParserEvidence.NoParser))
         assertTrue(candidates.candidates.value.isEmpty())
+    }
+
+    @Test
+    fun `el candidato del flujo de siempre conserva la confianza del parser`() = runTest {
+        modelReady = false
+        handler()(event(parsed))
+        assertEquals(0.6, candidates.candidates.value.single().confidence, 0.0)
     }
 }

@@ -176,6 +176,7 @@ class AppContainer(context: Context) {
         announcer = candidateAnnouncer,
         audit = decisionAudit,
         modeProvider = analysisModeProvider,
+        scheduleRetry = { delayMillis -> scheduleAnalysisRetry(delayMillis) },
     )
     val handleDetectedNotification = HandleDetectedNotification(
         queue = analysisQueue,
@@ -184,13 +185,31 @@ class AppContainer(context: Context) {
         announcer = candidateAnnouncer,
         modeProvider = analysisModeProvider,
         modelAvailability = localModelManager,
-        onQueued = { appScope.launch { processAnalysisQueue.drain() } },
+        onQueued = { appScope.launch(analysisExceptionHandler) { processAnalysisQueue.drain() } },
     )
     val listRecentDecisions = ListRecentDecisions(decisionAudit)
 
+    // Una excepcion en el analisis no debe cerrar la app: se registra y el item se reintenta.
+    private val analysisExceptionHandler = kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
+        AppLog.e("AppContainer", "Excepcion no controlada en el analisis", error)
+    }
+
+    // Un solo reintento pendiente a la vez: si ya hay uno programado no se apilan mas.
+    private var retryJob: kotlinx.coroutines.Job? = null
+
+    private fun scheduleAnalysisRetry(delayMillis: Long) {
+        synchronized(this) {
+            if (retryJob?.isActive == true) return
+            retryJob = appScope.launch(analysisExceptionHandler) {
+                kotlinx.coroutines.delay(delayMillis)
+                processAnalysisQueue.drain()
+            }
+        }
+    }
+
     init {
         // Al arrancar: lo que quedo a medias por la muerte del proceso vuelve a la cola y se procesa.
-        appScope.launch {
+        appScope.launch(analysisExceptionHandler) {
             if (!awaitHydrated()) return@launch
             processAnalysisQueue.recoverOnStartup()
             if (localModelManager.isReady()) processAnalysisQueue.drain()

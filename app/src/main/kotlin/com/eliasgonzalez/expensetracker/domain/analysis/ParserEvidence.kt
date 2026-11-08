@@ -6,6 +6,13 @@ data class ParserSnapshot(
     val merchant: String,
     val merchantConfident: Boolean,
     val parserId: String,
+    /** Confianza que declara el parser (0.6 a 0.95 segun el parser); se conserva en el candidato. */
+    val confidence: Double = 1.0,
+    /**
+     * true para un parser escrito a mano para UN formato conocido. El parser generico (regex laxa sobre
+     * cualquier texto con "Gs. 123") NO es curado: no basta para fiarse del contenido de un buzon.
+     */
+    val curated: Boolean = true,
 )
 
 /**

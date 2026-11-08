@@ -34,8 +34,8 @@ internal class LocalAnalysisQueueRepository(
         db.insert(
             """INSERT INTO analysis_queue (event_key, package_name, application_name, title, text, big_text,
                 notified_at, parser_kind, parser_id, parser_amount, parser_currency, parser_merchant,
-                parser_merchant_confident, trust, state, attempts, enqueued_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '$PENDING', 0, ?, ?)""",
+                parser_merchant_confident, parser_confidence, parser_curated, trust, state, attempts, enqueued_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '$PENDING', 0, ?, ?)""",
             listOf(
                 event.key, n.packageName, n.applicationName, n.title, n.text, n.bigText, n.timestamp,
                 when (event.parser) {
@@ -45,6 +45,7 @@ internal class LocalAnalysisQueueRepository(
                 },
                 parsed?.parserId ?: ignored?.parserId, parsed?.amount, parsed?.currency, parsed?.merchant,
                 parsed?.merchantConfident?.let { if (it) 1 else 0 },
+                parsed?.confidence, parsed?.curated?.let { if (it) 1 else 0 },
                 event.trust.name, ts, ts,
             ),
         )
@@ -55,6 +56,13 @@ internal class LocalAnalysisQueueRepository(
         db.query(
             "SELECT * FROM analysis_queue WHERE state = '$PENDING' AND attempts < ?$notIn ORDER BY id LIMIT 1",
             listOf<Any?>(maxAttempts) + excluded.toList(),
+        ) { row -> QueuedAnalysis(row.long("id"), row.toEvent(), row.long("attempts").toInt()) }.firstOrNull()
+    }
+
+    override suspend fun nextExhausted(maxAttempts: Int): QueuedAnalysis? = io {
+        db.query(
+            "SELECT * FROM analysis_queue WHERE state = '$PENDING' AND attempts >= ? ORDER BY id LIMIT 1",
+            listOf<Any?>(maxAttempts),
         ) { row -> QueuedAnalysis(row.long("id"), row.toEvent(), row.long("attempts").toInt()) }.firstOrNull()
     }
 
@@ -106,6 +114,8 @@ internal class LocalAnalysisQueueRepository(
                     merchant = string("parser_merchant"),
                     merchantConfident = long("parser_merchant_confident") == 1L,
                     parserId = string("parser_id"),
+                    confidence = doubleOrNull("parser_confidence") ?: 1.0,
+                    curated = longOrNull("parser_curated") != 0L,
                 )
             )
             "IGNORED" -> ParserEvidence.ExplicitlyIgnored(string("parser_id"))

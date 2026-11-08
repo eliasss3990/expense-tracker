@@ -27,6 +27,10 @@ class FakeAnalysisQueue : AnalysisQueueRepository {
         rows.firstOrNull { it.state == State.PENDING && it.id !in excluded && it.attempts < maxAttempts }
             ?.let { QueuedAnalysis(it.id, it.event, it.attempts) }
 
+    override suspend fun nextExhausted(maxAttempts: Int): QueuedAnalysis? =
+        rows.firstOrNull { it.state == State.PENDING && it.attempts >= maxAttempts }
+            ?.let { QueuedAnalysis(it.id, it.event, it.attempts) }
+
     override suspend fun markProcessing(id: Long): Boolean {
         val row = rows.first { it.id == id }
         if (row.state != State.PENDING) return false

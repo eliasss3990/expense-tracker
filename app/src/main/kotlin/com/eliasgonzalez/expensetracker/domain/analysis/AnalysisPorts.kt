@@ -20,6 +20,12 @@ interface AnalysisQueueRepository {
     /** El mas antiguo pendiente con menos de [maxAttempts] intentos, fuera de [excluded]. */
     suspend fun nextPending(excluded: Set<Long>, maxAttempts: Int): QueuedAnalysis?
 
+    /**
+     * Un pendiente que ya agoto sus intentos (por fallos, o porque el proceso murio durante el analisis
+     * [maxAttempts] veces). Sin esto quedaria PENDING para siempre: nextPending lo excluye y nada lo cierra.
+     */
+    suspend fun nextExhausted(maxAttempts: Int): QueuedAnalysis?
+
     /** Pasa a PROCESSING e incrementa los intentos; false si otro lo tomo antes. */
     suspend fun markProcessing(id: Long): Boolean
     suspend fun markDone(id: Long)

@@ -39,6 +39,7 @@ internal class AndroidSqlDatabase(private val dbHelper: DbHelper) : SqlDatabase 
         private fun index(column: String) = cursor.getColumnIndexOrThrow(column)
         override fun long(column: String) = cursor.getLong(index(column))
         override fun longOrNull(column: String) = index(column).let { if (cursor.isNull(it)) null else cursor.getLong(it) }
+        override fun doubleOrNull(column: String) = index(column).let { if (cursor.isNull(it)) null else cursor.getDouble(it) }
         override fun string(column: String) = cursor.getString(index(column))
         override fun stringOrNull(column: String) = index(column).let { if (cursor.isNull(it)) null else cursor.getString(it) }
     }

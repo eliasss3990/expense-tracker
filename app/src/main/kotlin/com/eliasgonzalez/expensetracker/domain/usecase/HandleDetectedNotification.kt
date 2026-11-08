@@ -49,6 +49,7 @@ class HandleDetectedNotification(
             sourceType = ExpenseSource.NOTIFICATION,
             sourceApp = event.notification.applicationName,
             parserId = parser.parserId,
+            confidence = parser.confidence,
         )
         val id = createCandidate(candidate) ?: return
         // Si el usuario ya lo resolvio entre el guardado y este punto, la alerta quedaria obsoleta.

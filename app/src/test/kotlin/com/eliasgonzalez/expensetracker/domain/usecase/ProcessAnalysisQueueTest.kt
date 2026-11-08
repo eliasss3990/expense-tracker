@@ -85,23 +85,28 @@ class ProcessAnalysisQueueTest {
         interpreter: TransactionInterpreter,
         awaitReady: suspend () -> Boolean = { true },
         maxAttempts: Int = 3,
+        scheduleRetry: (Long) -> Unit = {},
+        auditRepo: com.eliasgonzalez.expensetracker.domain.analysis.DecisionAuditRepository = audit,
+        queueRepo: com.eliasgonzalez.expensetracker.domain.analysis.AnalysisQueueRepository = queue,
+        categoryResolver: ResolveCategory = ResolveCategory(expenses, catalog),
     ): ProcessAnalysisQueue {
         AppLog.install(object : LogSink {
             override fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?) { logs += message }
         })
         val register = RegisterExpense(expenses, activity, expenseMutex)
         return ProcessAnalysisQueue(
-            queue = queue,
+            queue = queueRepo,
             interpreter = interpreter,
             decide = DecideRegistration(),
             createCandidate = CreateCandidate(candidates, activity, candidateMutex),
             findPendingCandidate = FindPendingCandidate(candidates),
             autoRegister = AutoRegisterExpense(candidates, expenses, register, candidateMutex, awaitReady),
-            resolveCategory = ResolveCategory(expenses, catalog),
+            resolveCategory = categoryResolver,
             announcer = announcer,
-            audit = audit,
+            audit = auditRepo,
             modeProvider = { mode },
             maxAttempts = maxAttempts,
+            scheduleRetry = scheduleRetry,
         )
     }
 
@@ -319,6 +324,150 @@ class ProcessAnalysisQueueTest {
         queue.enqueue(event("Se reembolso Gs. 85.000"))
         processor(interpreter({ refund.copy(categoryId = CategoryIds.FOOD) })).drain()
         assertNull(audit.entries.single().categoryId)
+    }
+
+    // --- regresion: hallazgos del code-review (cada uno con su mutacion verificada) ---
+
+    private val parsedEvidence = ParserEvidence.Parsed(ParserSnapshot(85_000, "PYG", "Supermercado Real", true, "p", confidence = 0.6))
+
+    private suspend fun diedDuringAnalysis(id: Long, times: Int) = repeat(times) {
+        queue.markProcessing(id) // empieza el analisis...
+        queue.recoverProcessing() // ...y el proceso muere: vuelve a PENDING con el intento ya contado
+    }
+
+    @Test
+    fun `un aviso cuyo analisis mato el proceso varias veces no queda huerfano, sale el candidato del parser`() = runTest {
+        val id = queue.enqueue(event(parser = parsedEvidence))!!
+        diedDuringAnalysis(id, times = 3)
+        assertEquals(FakeAnalysisQueue.State.PENDING, queue.state(id))
+
+        processor(interpreter({ purchase }), maxAttempts = 3).drain()
+
+        assertEquals(FakeAnalysisQueue.State.GAVE_UP, queue.state(id))
+        assertEquals(1, candidates.candidates.value.size)
+        assertEquals(DecisionEffect.FALLBACK_LEGACY, audit.entries.single().effect)
+        assertEquals("AttemptsExhausted", audit.entries.single().errorClass)
+        assertEquals("el respaldo conserva la confianza del parser", 0.6, candidates.candidates.value.single().confidence, 0.0)
+    }
+
+    @Test
+    fun `el respaldo tras fallar el modelo tambien conserva la confianza del parser`() = runTest {
+        queue.enqueue(event(parser = parsedEvidence))
+        val failing = object : TransactionInterpreter {
+            override suspend fun interpret(request: InterpretationRequest): InterpretationResult = error("x")
+        }
+        val p = processor(failing, maxAttempts = 2)
+        repeat(2) { p.drain() }
+        assertEquals(0.6, candidates.candidates.value.single().confidence, 0.0)
+    }
+
+    @Test
+    fun `un candidato por duda lleva la confianza del parser y sin parser lleva cero`() = runTest {
+        val doubtful = purchase.copy(status = OperationStatus.PENDING)
+        queue.enqueue(event(parser = parsedEvidence, timestamp = 1_000_000L))
+        queue.enqueue(event(text = "Pago por Gs. 12.000 en Kiosco Norte", timestamp = 9_000_000L))
+        val ofKiosk = doubtful.copy(amounts = listOf(AmountMention(12_000, AmountRole.OPERATION, "PYG")), merchant = "Kiosco Norte")
+        var n = 0
+        processor(interpreter({ if (n++ < 2) doubtful else ofKiosk })).drain()
+        val byAmount = candidates.candidates.value.associateBy { it.amount }
+        assertEquals(0.6, byAmount.getValue(85_000).confidence, 0.0)
+        assertEquals(0.0, byAmount.getValue(12_000).confidence, 0.0)
+    }
+
+    @Test
+    fun `sin parser un aviso agotado queda auditado como rendido y no desaparece sin rastro`() = runTest {
+        val id = queue.enqueue(event())!!
+        diedDuringAnalysis(id, times = 3)
+        processor(interpreter({ purchase }), maxAttempts = 3).drain()
+        assertEquals(FakeAnalysisQueue.State.GAVE_UP, queue.state(id))
+        assertEquals(DecisionEffect.GAVE_UP, audit.entries.single().effect)
+    }
+
+    @Test
+    fun `un efecto que falla en todos los intentos tampoco deja el aviso huerfano`() = runTest {
+        queue.enqueue(event(parser = parsedEvidence))
+        val real = candidates // dentro del object, "candidates" seria la propiedad del propio repositorio
+        val failingCandidates = object : com.eliasgonzalez.expensetracker.domain.repository.CandidateRepository by real {
+            override suspend fun save(candidate: com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate): Long {
+                if (failSaves) error("disco lleno")
+                return real.save(candidate)
+            }
+        }
+        val p = ProcessAnalysisQueue(
+            queue = queue, interpreter = interpreter({ purchase.copy(status = OperationStatus.PENDING) }), decide = DecideRegistration(),
+            createCandidate = CreateCandidate(failingCandidates, activity, candidateMutex),
+            findPendingCandidate = FindPendingCandidate(candidates),
+            autoRegister = AutoRegisterExpense(candidates, expenses, RegisterExpense(expenses, activity, expenseMutex), candidateMutex),
+            resolveCategory = ResolveCategory(expenses, catalog), announcer = announcer, audit = audit,
+            modeProvider = { mode }, maxAttempts = 3,
+        )
+        failSaves = true
+        repeat(3) { p.drain() }
+        failSaves = false
+        p.drain() // el drain siguiente cierra lo agotado
+
+        assertEquals(FakeAnalysisQueue.State.GAVE_UP, queue.state(1))
+        assertEquals("el respaldo debia crear el candidato del parser", 1, candidates.candidates.value.size)
+    }
+
+    private var failSaves = false
+
+    @Test
+    fun `tras una falla se programa un reintento con espera creciente y tope`() = runTest {
+        val delays = mutableListOf<Long>()
+        val failing = object : TransactionInterpreter {
+            override suspend fun interpret(request: InterpretationRequest): InterpretationResult = error("x")
+        }
+        queue.enqueue(event(parser = parsedEvidence))
+        val p = processor(failing, maxAttempts = 10, scheduleRetry = { delays += it })
+        repeat(4) { p.drain() }
+        assertEquals(listOf(60_000L, 120_000L, 240_000L, 480_000L), delays)
+        repeat(3) { p.drain() }
+        assertEquals("la espera tiene tope de 15 minutos", 15 * 60_000L, delays.last())
+    }
+
+    @Test
+    fun `si todo salio bien no se programa ningun reintento`() = runTest {
+        var scheduled = false
+        queue.enqueue(event())
+        processor(interpreter({ purchase }), scheduleRetry = { scheduled = true }).drain()
+        assertFalse(scheduled)
+    }
+
+    @Test
+    fun `una base sin cargar tambien programa el reintento`() = runTest {
+        val delays = mutableListOf<Long>()
+        queue.enqueue(event())
+        processor(interpreter({ purchase }), awaitReady = { false }, scheduleRetry = { delays += it }).drain()
+        assertEquals(listOf(60_000L), delays)
+    }
+
+    @Test
+    fun `una falla al auditar no tumba el drain ni deshace el gasto ya registrado`() = runTest {
+        queue.enqueue(event())
+        val brokenAudit = object : com.eliasgonzalez.expensetracker.domain.analysis.DecisionAuditRepository {
+            override suspend fun record(audit: com.eliasgonzalez.expensetracker.domain.analysis.DecisionAudit) = error("disco lleno")
+            override suspend fun recent(limit: Int) = emptyList<com.eliasgonzalez.expensetracker.domain.analysis.DecisionAudit>()
+            override suspend fun pruneBefore(timestamp: Long) = Unit
+        }
+        processor(interpreter({ purchase }), auditRepo = brokenAudit).drain() // no debe lanzar
+
+        assertEquals(1, expenses.expenses.value.size)
+        assertEquals(FakeAnalysisQueue.State.DONE, queue.state(1))
+    }
+
+    @Test
+    fun `una falla inesperada fuera de las zonas protegidas no sale de drain y el aviso se reintenta`() = runTest {
+        queue.enqueue(event())
+        var calls = 0
+        val flakyResolver = ResolveCategory(expenses, catalog) { if (++calls == 2) error("base bloqueada") else true }
+        val p = processor(interpreter({ purchase }), categoryResolver = flakyResolver)
+        p.drain() // no debe lanzar
+
+        assertEquals(FakeAnalysisQueue.State.PENDING, queue.state(1))
+        assertTrue(expenses.expenses.value.isEmpty())
+        p.drain()
+        assertEquals(1, expenses.expenses.value.size)
     }
 
     // --- el log explica el por que sin datos financieros ---

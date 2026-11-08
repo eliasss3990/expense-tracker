@@ -35,6 +35,7 @@ internal class JdbcSqlDatabase(private val conn: Connection) : SqlDatabase {
     private class ResultSetRow(private val rs: ResultSet) : SqlRow {
         override fun long(column: String) = rs.getLong(column)
         override fun longOrNull(column: String) = rs.getLong(column).let { if (rs.wasNull()) null else it }
+        override fun doubleOrNull(column: String) = rs.getDouble(column).let { if (rs.wasNull()) null else it }
         override fun string(column: String): String = rs.getString(column)
         override fun stringOrNull(column: String): String? = rs.getString(column)
     }

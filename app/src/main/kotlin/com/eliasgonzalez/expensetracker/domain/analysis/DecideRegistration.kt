@@ -5,7 +5,10 @@ enum class SourceTrust {
     /** App del banco/billetera: el contenido lo genera la entidad. */
     BANK,
 
-    /** Buzon (ej. Gmail): cualquiera puede mandar un mail; solo se auto-registra si un parser curado lo reconocio. */
+    /**
+     * Buzon (ej. Gmail): cualquiera puede mandar un mail; solo se auto-registra si lo reconocio un parser
+     * CURADO para un formato conocido (no el generico, que acepta casi cualquier texto con un monto).
+     */
     MAILBOX,
 
     /** Nunca se auto-registra. */
@@ -94,7 +97,7 @@ class DecideRegistration {
 
         val trusted = when (policy.trust) {
             SourceTrust.BANK -> true
-            SourceTrust.MAILBOX -> parsed != null
+            SourceTrust.MAILBOX -> parsed?.curated == true
             SourceTrust.UNTRUSTED -> false
         }
         if (!trusted) reasons += DecisionReason.UNTRUSTED_SOURCE
@@ -126,6 +129,9 @@ class DecideRegistration {
             cross != null && !agree(primary, cross) -> reasons += DecisionReason.PASSES_DISAGREE
             cross == null && policy.requireCrossCheck -> reasons += DecisionReason.NO_CROSS_CHECK
         }
+        // Las dos pasadas son el mismo modelo: sus errores estan correlacionados. Descartar (lo unico
+        // que hace desaparecer un aviso) exige ademas que ninguna haya declarado dudas.
+        if (primary.doubts.isNotEmpty() || cross?.doubts?.isNotEmpty() == true) reasons += DecisionReason.MODEL_DOUBT
         if (reasons.isNotEmpty()) {
             return RegistrationDecision(
                 RegistrationOutcome.REVIEW, reasons, parsed?.amount, parsed?.currency, parsed?.merchant,

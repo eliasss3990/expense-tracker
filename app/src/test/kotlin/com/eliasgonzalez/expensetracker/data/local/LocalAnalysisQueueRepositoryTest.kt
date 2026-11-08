@@ -44,7 +44,7 @@ class LocalAnalysisQueueRepositoryTest {
 
     @Test
     fun `lo encolado se lee igual, incluidos los tres tipos de parser`() = runTest {
-        val parsed = ParserEvidence.Parsed(ParserSnapshot(85_000, "PYG", "Tienda", true, "ueno"))
+        val parsed = ParserEvidence.Parsed(ParserSnapshot(85_000, "PYG", "Tienda", true, "ueno", confidence = 0.6, curated = false))
         repo.enqueue(event("a", parsed))
         repo.enqueue(event("b", ParserEvidence.ExplicitlyIgnored("ueno")))
         repo.enqueue(event("c"))
@@ -111,5 +111,17 @@ class LocalAnalysisQueueRepositoryTest {
         }
         assertEquals(listOf("pending", "fresh"), remaining)
         assertEquals(pending, repo.nextPending(emptySet(), 3)!!.id)
+    }
+
+    @Test
+    fun `nextExhausted devuelve el pendiente que agoto sus intentos y nunca uno que aun puede reintentarse`() = runTest {
+        val spent = repo.enqueue(event("spent"))!!
+        val alive = repo.enqueue(event("alive"))!!
+        repeat(3) { repo.markProcessing(spent); repo.markRetry(spent, "x") }
+        repo.markProcessing(alive); repo.markRetry(alive, "x")
+
+        assertEquals(spent, repo.nextExhausted(3)!!.id)
+        repo.markGaveUp(spent, "AttemptsExhausted")
+        assertNull("el otro aun tiene intentos", repo.nextExhausted(3))
     }
 }
