@@ -36,6 +36,13 @@ class ChatPromptsTest {
     }
 
     @Test
+    fun `sin fechas el periodo es ALL y no hoy`() {
+        val s = ChatPrompts.system(today, cats)
+        assertTrue("NO asumas hoy" in s)
+        assertTrue("\"cuanto gaste en comida\" -> {\"action\":\"QUERY\",\"metric\":\"SUM\",\"period\":\"ALL\"" in s)
+    }
+
+    @Test
     fun `sin contexto el mensaje es solo la frase`() {
         assertEquals("Frase actual del usuario: hola", ChatPrompts.user(req()))
     }
