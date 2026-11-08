@@ -168,7 +168,8 @@ class AppContainer(context: Context) {
         candidateRepository, expenseRepository, registerExpense, candidateWriteMutex, awaitHydrated,
     )
     private val resolveCategory = ResolveCategory(expenseRepository, catalogRepository, awaitHydrated)
-    private val processAnalysisQueue = ProcessAnalysisQueue(
+    // Tipos explicitos: la cola y el programador de reintentos se referencian entre si y Kotlin no puede inferirlos.
+    private val processAnalysisQueue: ProcessAnalysisQueue = ProcessAnalysisQueue(
         queue = analysisQueue,
         interpreter = transactionInterpreter,
         decide = DecideRegistration(),
@@ -200,7 +201,7 @@ class AppContainer(context: Context) {
     }
 
     // Reintentos con espera creciente (ver AnalysisRetryScheduler: un solo reintento esperando a la vez).
-    private val analysisRetryScheduler = AnalysisRetryScheduler(appScope + analysisExceptionHandler) { processAnalysisQueue.drain() }
+    private val analysisRetryScheduler: AnalysisRetryScheduler = AnalysisRetryScheduler(appScope + analysisExceptionHandler) { processAnalysisQueue.drain() }
 
     init {
         // Al arrancar: lo que quedo a medias por la muerte del proceso vuelve a la cola y se procesa.
