@@ -23,8 +23,8 @@ android {
         applicationId = "com.eliasgonzalez.expensetracker"
         minSdk = 26
         targetSdk = 37
-        versionCode = 15
-        versionName = "0.6.0"
+        versionCode = 16
+        versionName = "0.6.1"
     }
 
     buildFeatures {
@@ -45,6 +45,14 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // El motor de LiteRT-LM pesa ~22 MB por arquitectura. x86_64 (~26 MB) solo sirve a emuladores y
+            // ChromeOS, no a ningun telefono: se excluye del APK de release (pasaba de ~35 a ~61 MB). El resto de las
+            // arquitecturas queda igual, asi que nada cambia en los dispositivos donde ya se instalaba. El build
+            // de debug las conserva todas.
+            ndk {
+                // addAll y no `+=`: abiFilters es un Set de solo lectura y `+=` es ambiguo (plus/plusAssign).
+                abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86"))
+            }
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
