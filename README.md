@@ -251,9 +251,9 @@ se verifica su SHA-256) → elegir el modo:
 
 **Cómo decide.** El modelo no decide nada por sí solo: rellena campos cerrados (dirección del
 dinero, estado de la operación, el papel de cada cifra —importe, saldo, límite, cuota—, comercio,
-categoría y dudas) y el dominio comprueba que sea coherente. Un gasto se registra solo únicamente si:
+categoría) y el dominio comprueba que sea coherente. Un gasto se registra solo únicamente si:
 
-- el modelo lo leyó **dos veces** (la segunda sin ver al parser) con el mismo resultado, sin declarar dudas;
+- el modelo lo leyó **dos veces** (la segunda sin ver al parser) con el mismo resultado;
 - el importe figura **literalmente** en el aviso y la moneda es la del texto (solo guaraníes se registran solos);
 - si hay un parser a medida, **coincide** con él;
 - la fuente es de fiar: una app de banco sí; un **buzón (Gmail) solo si lo reconoció un parser a medida**, porque

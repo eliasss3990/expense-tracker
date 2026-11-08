@@ -2,7 +2,6 @@ package com.eliasgonzalez.expensetracker.data.analysis
 
 import com.eliasgonzalez.expensetracker.domain.analysis.AmountRole
 import com.eliasgonzalez.expensetracker.domain.analysis.CategoryOption
-import com.eliasgonzalez.expensetracker.domain.analysis.ModelDoubt
 import com.eliasgonzalez.expensetracker.domain.analysis.MoneyDirection
 import com.eliasgonzalez.expensetracker.domain.analysis.OperationStatus
 import org.json.JSONArray
@@ -22,7 +21,7 @@ class InterpretationSchemaTest {
     fun `es JSON valido y exige todas las claves sin permitir otras`() {
         val s = schema()
         assertEquals(false, s.getBoolean("additionalProperties"))
-        assertEquals(setOf("direction", "status", "amounts", "merchant", "category", "doubts"), values(s.getJSONArray("required")).toSet())
+        assertEquals(setOf("direction", "status", "amounts", "merchant", "category"), values(s.getJSONArray("required")).toSet())
         assertEquals(props(s).keys().asSequence().toSet(), values(s.getJSONArray("required")).toSet())
     }
 
@@ -33,7 +32,6 @@ class InterpretationSchemaTest {
         assertEquals(OperationStatus.entries.map { it.name }, values(p.getJSONObject("status").getJSONArray("enum")))
         val item = p.getJSONObject("amounts").getJSONObject("items")
         assertEquals(AmountRole.entries.map { it.name }, values(props(item).getJSONObject("role").getJSONArray("enum")))
-        assertEquals(ModelDoubt.entries.map { it.name }, values(p.getJSONObject("doubts").getJSONObject("items").getJSONArray("enum")))
     }
 
     @Test
@@ -59,7 +57,6 @@ class InterpretationSchemaTest {
     fun `acota el tamano de la salida`() {
         val p = props(schema())
         assertTrue(p.getJSONObject("amounts").getInt("maxItems") in 1..10)
-        assertTrue(p.getJSONObject("doubts").getInt("maxItems") in 1..10)
         assertTrue(props(schema()).getJSONObject("merchant").getJSONArray("anyOf").getJSONObject(0).getInt("maxLength") <= 100)
     }
 
