@@ -52,6 +52,7 @@ internal object AiPresentation {
         DecisionEffect.SHADOW_ONLY -> "Solo medido (Sombra)"
         DecisionEffect.FALLBACK_LEGACY -> "Salió como siempre"
         DecisionEffect.UNUSABLE -> "No se pudo leer el importe"
+        DecisionEffect.IGNORED_UNREADABLE -> "Ignorado (no parecía un gasto)"
         DecisionEffect.GAVE_UP -> "No se pudo analizar"
     }
 
@@ -109,6 +110,7 @@ internal object AiPresentation {
             )
             DecisionEffect.FALLBACK_LEGACY -> add("El modelo no pudo analizarlo (${audit.errorClass ?: "error"}) y salió como siempre, con el parser.")
             DecisionEffect.UNUSABLE -> add("Se avisó a tu teléfono: el aviso hablaba de dinero pero no se pudo leer un importe.")
+            DecisionEffect.IGNORED_UNREADABLE -> add("No se avisó: venía de un buzón o app no bancaria y no tenía un importe que leer.")
             DecisionEffect.GAVE_UP -> add("No se pudo analizar (${audit.errorClass ?: "error"}) y no había parser: queda solo este registro.")
         }
         if (categoryLabel != null && audit.categorySource != null) {

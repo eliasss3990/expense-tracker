@@ -17,6 +17,9 @@ enum class DecisionEffect {
 
     /** La interpretacion no dio un importe utilizable ni habia parser: queda solo en la auditoria. */
     UNUSABLE,
+
+    /** Sin importe utilizable y la fuente no es un banco (p. ej. un correo): se ignora sin molestar al usuario. */
+    IGNORED_UNREADABLE,
     GAVE_UP,
 }
 

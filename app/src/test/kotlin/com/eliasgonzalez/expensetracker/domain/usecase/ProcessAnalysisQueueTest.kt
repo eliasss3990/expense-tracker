@@ -508,6 +508,17 @@ class ProcessAnalysisQueueTest {
     }
 
     @Test
+    fun `un correo sin importe legible no molesta al usuario ni deja candidato`() = runTest {
+        queue.enqueue(event(trust = SourceTrust.MAILBOX))
+        val twoOperations = purchase.copy(amounts = listOf(AmountMention(85_000, AmountRole.OPERATION, "PYG"), AmountMention(90_000, AmountRole.OPERATION, "PYG")))
+        processor(interpreter({ twoOperations })).drain()
+
+        assertTrue(candidates.candidates.value.isEmpty())
+        assertEquals(DecisionEffect.IGNORED_UNREADABLE, audit.entries.single().effect)
+        assertTrue("de un buzon no se avisa", notices.isEmpty())
+    }
+
+    @Test
     fun `un fallo al avisar de un aviso ilegible no rompe el procesamiento`() = runTest {
         queue.enqueue(event())
         val none = purchase.copy(amounts = emptyList())

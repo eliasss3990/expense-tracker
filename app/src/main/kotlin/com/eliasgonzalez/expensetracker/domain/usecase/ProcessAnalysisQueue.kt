@@ -9,6 +9,7 @@ import com.eliasgonzalez.expensetracker.domain.analysis.CategoryChoice
 import com.eliasgonzalez.expensetracker.domain.analysis.CandidateAnnouncer
 import com.eliasgonzalez.expensetracker.domain.analysis.ModelAvailability
 import com.eliasgonzalez.expensetracker.domain.analysis.ReviewNoticeAnnouncer
+import com.eliasgonzalez.expensetracker.domain.analysis.SourceTrust
 import com.eliasgonzalez.expensetracker.domain.analysis.DecideRegistration
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAudit
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAuditRepository
@@ -284,7 +285,9 @@ class ProcessAnalysisQueue(
         val amount = decision.amount?.takeIf { it > 0 }
         val currency = decision.currency?.takeIf { it.length == 3 }
         if (amount == null || currency == null) {
-            // Sin importe utilizable no hay candidato posible, pero el aviso NO se pierde: se le avisa al usuario.
+            // Sin importe utilizable no hay candidato posible. De un banco el aviso NO se pierde: se le avisa al usuario.
+            // De un buzon (un correo cualquiera) o una app no confiable seria ruido: queda solo en la auditoria.
+            if (event.trust != SourceTrust.BANK) return AppliedEffect(DecisionEffect.IGNORED_UNREADABLE)
             try {
                 noticeAnnouncer.announce(event.notification.applicationName)
             } catch (cancelled: CancellationException) {

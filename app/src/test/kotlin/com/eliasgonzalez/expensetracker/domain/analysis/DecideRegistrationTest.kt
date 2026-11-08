@@ -291,4 +291,23 @@ class DecideRegistrationTest {
             assertTrue(PASSES_DISAGREE in d.reasons)
         }
     }
+
+    @Test
+    fun `dos pasadas que dicen que no es un movimiento coinciden aunque el estado o las cifras difieran`() {
+        val newsletter = notification("Tu resumen de pagos de noviembre ya esta disponible. Ofertas desde Gs. 20.000.")
+        val first = interp(direction = MoneyDirection.NONE, status = OperationStatus.UNKNOWN, amounts = emptyList(), merchant = null)
+        val noisy = interp(direction = MoneyDirection.NONE, status = OperationStatus.COMPLETED, amounts = listOf(amount(20_000)), merchant = null)
+        for (results in listOf(both(first, noisy), both(noisy, first))) {
+            val d = decide(newsletter, ParserEvidence.NoParser, results, bank)
+            assertEquals(DISCARD, d.outcome)
+            assertTrue(PASSES_DISAGREE !in d.reasons)
+        }
+    }
+
+    @Test
+    fun `NONE contra un movimiento real sigue yendo a revision`() {
+        val d = decide(purchase, ParserEvidence.NoParser, both(interp(direction = MoneyDirection.NONE), interp()), bank)
+        assertEquals(REVIEW, d.outcome)
+        assertTrue(PASSES_DISAGREE in d.reasons)
+    }
 }
