@@ -1,6 +1,9 @@
 package com.eliasgonzalez.expensetracker.notification
 
+import com.eliasgonzalez.expensetracker.domain.analysis.ParserEvidence
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -119,5 +122,32 @@ class ParserEngineTest {
         val context = genericNotification("   \t\n  ")
 
         assertNull(ParserEngine.parse(context))
+    }
+
+    // --- ParserEvidence: lo que el analisis con IA necesita saber de los parsers ---
+
+    @Test
+    fun `un parser dedicado produce evidencia curada con la confianza del parser`() {
+        val e = ParserEngine.evidence(bankAppNotification("Enviaste Gs. 800.000", "detalle")) as ParserEvidence.Parsed
+        assertTrue(e.snapshot.curated)
+        assertEquals(0.9, e.snapshot.confidence, 0.0)
+    }
+
+    @Test
+    fun `el parser generico produce evidencia NO curada`() {
+        val e = ParserEngine.evidence(genericNotification("Compra por Gs. 50.000 en Tienda X")) as ParserEvidence.Parsed
+        assertFalse("la regex generica no es un parser curado", e.snapshot.curated)
+        assertEquals(0.6, e.snapshot.confidence, 0.0)
+    }
+
+    @Test
+    fun `un ingreso de Ueno es un descarte explicito y no un simple null`() {
+        val e = ParserEngine.evidence(bankAppNotification("Recibiste Gs. 800.000", "detalle"))
+        assertTrue(e is ParserEvidence.ExplicitlyIgnored)
+    }
+
+    @Test
+    fun `una notificacion que ningun parser conoce es NoParser`() {
+        assertEquals(ParserEvidence.NoParser, ParserEngine.evidence(genericNotification("Tu sesion vence pronto")))
     }
 }
