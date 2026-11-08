@@ -71,6 +71,7 @@ class ChatPromptsTest {
         assertTrue("Nunca pongas el producto en merchant" in s)
         assertTrue("\"merchant\":\"\",\"description\":\"Compra de cafe\"" in s)
         assertTrue("\"merchant\":\"Shell\",\"description\":\"Carga de nafta en Shell\"" in s)
+        assertTrue("merchant es ese nombre" in s); assertTrue("\"merchant\":\"Zara\"" in s)
         assertTrue("una frase corta y descriptiva" in s); assertTrue("No inventes datos que el usuario no dijo" in s)
     }
 
