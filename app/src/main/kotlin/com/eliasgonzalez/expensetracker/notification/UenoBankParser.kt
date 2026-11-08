@@ -35,6 +35,9 @@ object UenoBankParser : NotificationParser {
         }
     }
 
+    override fun explicitlyIgnores(context: NotificationContext): Boolean =
+        canHandle(context) && receivedRegex.containsMatchIn("${context.title} ${context.text} ${context.bigText}")
+
     override fun parse(context: NotificationContext): ParseResult? {
         val body = "${context.title} ${context.text} ${context.bigText}"
         if (receivedRegex.containsMatchIn(body)) return null // ingreso, no es un gasto
