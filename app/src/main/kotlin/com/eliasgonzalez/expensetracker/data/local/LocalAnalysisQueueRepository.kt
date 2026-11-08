@@ -34,8 +34,8 @@ internal class LocalAnalysisQueueRepository(
         db.insert(
             """INSERT INTO analysis_queue (event_key, package_name, application_name, title, text, big_text,
                 notified_at, parser_kind, parser_id, parser_amount, parser_currency, parser_merchant,
-                parser_merchant_confident, parser_confidence, parser_curated, trust, state, attempts, enqueued_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '$PENDING', 0, ?, ?)""",
+                parser_merchant_confident, parser_confidence, parser_curated, trust, legacy_handled, state, attempts, enqueued_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '$PENDING', 0, ?, ?)""",
             listOf(
                 event.key, n.packageName, n.applicationName, n.title, n.text, n.bigText, n.timestamp,
                 when (event.parser) {
@@ -46,7 +46,7 @@ internal class LocalAnalysisQueueRepository(
                 parsed?.parserId ?: ignored?.parserId, parsed?.amount, parsed?.currency, parsed?.merchant,
                 parsed?.merchantConfident?.let { if (it) 1 else 0 },
                 parsed?.confidence, parsed?.curated?.let { if (it) 1 else 0 },
-                event.trust.name, ts, ts,
+                event.trust.name, if (event.legacyHandled) 1 else 0, ts, ts,
             ),
         )
     }
@@ -133,6 +133,7 @@ internal class LocalAnalysisQueueRepository(
             ),
             parser = parser,
             trust = SourceTrust.valueOf(string("trust")),
+            legacyHandled = long("legacy_handled") == 1L,
         )
     }
 }

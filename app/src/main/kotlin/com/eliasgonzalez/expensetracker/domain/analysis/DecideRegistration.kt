@@ -70,6 +70,12 @@ class DecideRegistration {
             currency.isNullOrBlank() -> reasons += DecisionReason.CURRENCY_MISSING
             currency !in policy.autoCurrencies -> reasons += DecisionReason.CURRENCY_NOT_AUTO
         }
+        // El modelo no puede decir PYG si la notificacion habla de otra moneda y no de guaranies: antes un
+        // "USD 85" se registraba como 85 guaranies.
+        val text = notification.searchableText()
+        if (currency == "PYG" && NumericTokens.mentionsForeignCurrency(text) && !NumericTokens.mentionsGuarani(text)) {
+            reasons += DecisionReason.CURRENCY_NOT_IN_TEXT
+        }
 
         val merchant = primary.merchant?.takeIf(String::isNotBlank) ?: parsed?.merchant
         when {

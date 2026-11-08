@@ -7,6 +7,8 @@ import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisEventKey
 import com.eliasgonzalez.expensetracker.domain.analysis.AnalysisQueueRepository
 import com.eliasgonzalez.expensetracker.domain.analysis.CategoryChoice
 import com.eliasgonzalez.expensetracker.domain.analysis.CandidateAnnouncer
+import com.eliasgonzalez.expensetracker.domain.analysis.ModelAvailability
+import com.eliasgonzalez.expensetracker.domain.analysis.ReviewNoticeAnnouncer
 import com.eliasgonzalez.expensetracker.domain.analysis.DecideRegistration
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAudit
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAuditRepository
@@ -49,6 +51,8 @@ class ProcessAnalysisQueue(
     private val autoRegister: AutoRegisterExpense,
     private val resolveCategory: ResolveCategory,
     private val announcer: CandidateAnnouncer,
+    private val noticeAnnouncer: ReviewNoticeAnnouncer = ReviewNoticeAnnouncer { },
+    private val modelAvailability: ModelAvailability = ModelAvailability { true },
     private val audit: DecisionAuditRepository,
     private val modeProvider: AnalysisModeProvider,
     private val requireCrossCheck: Boolean = true,
@@ -68,6 +72,13 @@ class ProcessAnalysisQueue(
     }
 
     suspend fun drain() = drainMutex.withLock {
+        // Los PROCESSING que queden aca son de un drain abortado (cancelacion, excepcion): drainMutex asegura
+        // que ningun otro drain esta corriendo, asi que vuelven a la cola en vez de quedar trabados.
+        queue.recoverProcessing()
+        if (!modelAvailability.isReady()) {
+            drainWithoutModel()
+            return@withLock
+        }
         giveUpExhausted()
         val deferred = mutableMapOf<Long, Int>() // id -> numero de intento que acaba de fallar
         while (true) {
@@ -92,12 +103,41 @@ class ProcessAnalysisQueue(
         }
     }
 
+    /**
+     * El modelo ya no esta (se borro o fallo la verificacion) con avisos encolados cuando si estaba: no hay quien los
+     * analice, asi que salen por el flujo de siempre en vez de quedar pendientes para siempre.
+     */
+    private suspend fun drainWithoutModel() {
+        while (true) {
+            val item = queue.nextPending(emptySet(), Int.MAX_VALUE) ?: break
+            if (!queue.markProcessing(item.id)) continue
+            try {
+                giveUp(item, effectiveMode(item.event), "ModelUnavailable")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                AppLog.e(TAG, "evento=${AnalysisEventKey.short(item.event.key)} sin modelo y no se pudo resolver: ${error.javaClass.simpleName}", error)
+                runCatching { queue.markRetry(item.id, error.javaClass.simpleName, refundAttempt = true) }
+                break
+            }
+        }
+    }
+
+    /**
+     * Sombra solo vale si el flujo de siempre YA creo el candidato al llegar el aviso. Si el aviso se encolo en
+     * Asistido/Automatico y despues cambio el modo, el analisis es su unica via: se trata como Asistido.
+     */
+    private fun effectiveMode(event: AnalysisEvent): AnalysisMode {
+        val mode = modeProvider.currentMode()
+        return if (mode == AnalysisMode.SHADOW && !event.legacyHandled) AnalysisMode.ASSISTED else mode
+    }
+
     /** Un item que agoto sus intentos se cierra con el mismo respaldo que una falla del modelo. */
     private suspend fun giveUpExhausted() {
         while (true) {
             val item = queue.nextExhausted(maxAttempts) ?: break
             try {
-                giveUp(item, modeProvider.currentMode(), "AttemptsExhausted")
+                giveUp(item, effectiveMode(item.event), "AttemptsExhausted")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -114,7 +154,7 @@ class ProcessAnalysisQueue(
     /** true si el item quedo terminado; false si se reintentara mas tarde. */
     private suspend fun process(item: QueuedAnalysis): Boolean {
         val event = item.event
-        val mode = modeProvider.currentMode()
+        val mode = effectiveMode(event)
         val results = try {
             interpret(event)
         } catch (cancelled: CancellationException) {
@@ -243,7 +283,17 @@ class ProcessAnalysisQueue(
     private suspend fun candidateEffect(event: AnalysisEvent, decision: RegistrationDecision, category: CategoryChoice): AppliedEffect {
         val amount = decision.amount?.takeIf { it > 0 }
         val currency = decision.currency?.takeIf { it.length == 3 }
-        if (amount == null || currency == null) return AppliedEffect(DecisionEffect.UNUSABLE)
+        if (amount == null || currency == null) {
+            // Sin importe utilizable no hay candidato posible, pero el aviso NO se pierde: se le avisa al usuario.
+            try {
+                noticeAnnouncer.announce(event.notification.applicationName)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                AppLog.w(TAG, "No se pudo avisar de un aviso ilegible: ${error.javaClass.simpleName}")
+            }
+            return AppliedEffect(DecisionEffect.UNUSABLE)
+        }
         val parserId = (event.parser as? ParserEvidence.Parsed)?.snapshot?.parserId ?: "ai-interpretation"
         val merchant = decision.merchant?.takeIf(String::isNotBlank)
         val candidate = candidateFrom(

@@ -17,6 +17,7 @@ import com.eliasgonzalez.expensetracker.domain.analysis.TransactionInterpretatio
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.sql.Connection
@@ -80,6 +81,18 @@ class LocalDecisionAuditRepositoryTest {
         repo.record(audit("old", 1)); repo.record(audit("new", 100))
         repo.pruneBefore(50)
         assertEquals(listOf("new"), repo.recent(10).map { it.eventKey })
+    }
+
+    @Test
+    fun `una fila con la interpretacion danada no rompe la lectura de las demas`() = runTest {
+        repo.record(audit("buena", 1)); repo.record(audit("mala", 2)); repo.record(audit("otra-buena", 3))
+        conn.createStatement().use { it.executeUpdate("UPDATE decision_audit SET interpretations = '[{no es json' WHERE event_key = 'mala'") }
+
+        val read = repo.recent(10)
+
+        assertEquals(listOf("otra-buena", "mala", "buena"), read.map { it.eventKey })
+        assertTrue(read.first { it.eventKey == "mala" }.interpretations.isEmpty())
+        assertEquals("las demas conservan sus datos", 1, read.first { it.eventKey == "buena" }.interpretations.size)
     }
 
     @Test

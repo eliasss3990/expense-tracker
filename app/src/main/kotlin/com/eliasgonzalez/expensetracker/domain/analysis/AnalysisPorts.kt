@@ -8,6 +8,11 @@ data class AnalysisEvent(
     val notification: NotificationSnapshot,
     val parser: ParserEvidence,
     val trust: SourceTrust,
+    /**
+     * true si el flujo de siempre ya creo el candidato al llegar el aviso (modo Sombra o sin modelo). Si es false, el
+     * analisis es la UNICA via: aunque el usuario cambie de modo antes de procesarlo, el aviso no puede perderse.
+     */
+    val legacyHandled: Boolean = false,
 )
 
 data class QueuedAnalysis(val id: Long, val event: AnalysisEvent, val attempts: Int)
@@ -42,6 +47,11 @@ interface AnalysisQueueRepository {
 
     /** Borra lo terminado antes de [timestamp] (el texto de las notificaciones no se guarda para siempre). */
     suspend fun pruneBefore(timestamp: Long)
+}
+
+/** Avisa que hay un aviso financiero que no se pudo interpretar (sin importe utilizable): que el usuario no lo pierda. */
+fun interface ReviewNoticeAnnouncer {
+    suspend fun announce(sourceApp: String)
 }
 
 /** Si hay un modelo utilizable ahora mismo (instalado y verificado). */

@@ -234,6 +234,26 @@ class DecideRegistrationTest {
         assertEquals(REVIEW, d.outcome)
     }
 
+    // --- la moneda tambien se contrasta con el texto (reproduccion del review: "USD 85" quedaba como 85 PYG) ---
+
+    private fun withCurrencyText(text: String) = decide(notification(text), ParserEvidence.NoParser, both(interp(amounts = listOf(amount(85)), merchant = "Tienda Online")), bank)
+
+    @Test
+    fun `si el texto habla de otra moneda y no de guaranies el modelo no puede decir PYG`() {
+        for (text in listOf("Compra aprobada por USD 85 en Tienda Online", "Compra por US$ 85 en Tienda Online", "Compra por 85 dolares en Tienda Online", "Compra por EUR 85 en Tienda Online", "Compra por \u20AC85 en Tienda Online")) {
+            val d = withCurrencyText(text)
+            assertEquals(text, REVIEW, d.outcome)
+            assertTrue(text, CURRENCY_NOT_IN_TEXT in d.reasons)
+        }
+    }
+
+    @Test
+    fun `no se pasa de revisor, con guaranies o sin marca de moneda se registra`() {
+        assertEquals(AUTO_REGISTER, withCurrencyText("Compra aprobada por Gs. 85 en Tienda Online").outcome)
+        assertEquals("sin ninguna marca de moneda no se sobre-revisa", AUTO_REGISTER, withCurrencyText("Compra aprobada por 85 en Tienda Online").outcome)
+        assertEquals("si menciona ambas, hay guaranies", AUTO_REGISTER, withCurrencyText("Compra de USD 20 debitada como Gs. 85 en Tienda Online").outcome)
+    }
+
     @Test
     fun `un buzon con el parser generico NO curado no se registra solo`() {
         // Cualquiera puede mandar un mail con "Compra por Gs. 85.000": el generico lo "reconoce".

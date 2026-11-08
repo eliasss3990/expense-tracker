@@ -61,6 +61,16 @@ class LocalAnalysisQueueRepositoryTest {
     }
 
     @Test
+    fun `la marca de flujo de siempre ya aplicado sobrevive al guardado`() = runTest {
+        repo.enqueue(event("a").copy(legacyHandled = true))
+        repo.enqueue(event("b").copy(legacyHandled = false))
+        val first = repo.nextPending(emptySet(), 3)!!
+        assertTrue(first.event.legacyHandled)
+        repo.markProcessing(first.id); repo.markDone(first.id)
+        assertFalse(repo.nextPending(emptySet(), 3)!!.event.legacyHandled)
+    }
+
+    @Test
     fun `markProcessing cuenta el intento y solo lo toma uno`() = runTest {
         val id = repo.enqueue(event("k"))!!
         assertTrue(repo.markProcessing(id))

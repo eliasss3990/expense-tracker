@@ -48,6 +48,7 @@ class ProcessAnalysisQueueTest {
     private val candidateMutex = Mutex()
     private val expenseMutex = Mutex()
     private val announced = mutableListOf<ExpenseCandidate>()
+    private val notices = mutableListOf<String>()
     private val announcer = CandidateAnnouncer { announced += it }
     private var mode = AnalysisMode.AUTOMATIC
     private var ready = true
@@ -89,6 +90,7 @@ class ProcessAnalysisQueueTest {
         auditRepo: com.eliasgonzalez.expensetracker.domain.analysis.DecisionAuditRepository = audit,
         queueRepo: com.eliasgonzalez.expensetracker.domain.analysis.AnalysisQueueRepository = queue,
         categoryResolver: ResolveCategory = ResolveCategory(expenses, catalog),
+        modelReady: Boolean = true,
     ): ProcessAnalysisQueue {
         AppLog.install(object : LogSink {
             override fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?) { logs += message }
@@ -103,6 +105,8 @@ class ProcessAnalysisQueueTest {
             autoRegister = AutoRegisterExpense(candidates, expenses, register, candidateMutex, awaitReady),
             resolveCategory = categoryResolver,
             announcer = announcer,
+            noticeAnnouncer = { notices += it },
+            modelAvailability = { modelReady },
             audit = auditRepo,
             modeProvider = { mode },
             maxAttempts = maxAttempts,
@@ -166,7 +170,7 @@ class ProcessAnalysisQueueTest {
     @Test
     fun `sombra mide y audita sin tocar nada`() = runTest {
         mode = AnalysisMode.SHADOW
-        queue.enqueue(event())
+        queue.enqueue(event().copy(legacyHandled = true)) // el flujo de siempre ya creo el candidato al llegar
         processor(interpreter({ purchase })).drain()
 
         assertTrue(expenses.expenses.value.isEmpty())
@@ -468,6 +472,80 @@ class ProcessAnalysisQueueTest {
         assertTrue(expenses.expenses.value.isEmpty())
         p.drain()
         assertEquals(1, expenses.expenses.value.size)
+    }
+
+    // --- regresion: segundo review (reproducciones del agente) ---
+
+    @Test
+    fun `un aviso encolado en automatico no se pierde si el usuario pasa a sombra antes de procesarlo`() = runTest {
+        // En Asistido/Automatico el aviso se encola SIN candidato de siempre: el analisis es su unica via.
+        queue.enqueue(event(parser = parsedEvidence)) // legacyHandled = false
+        mode = AnalysisMode.SHADOW // el usuario cambia de modo antes del drain
+        processor(interpreter({ purchase })).drain()
+
+        assertEquals("el aviso debia convertirse en candidato", 1, candidates.candidates.value.size)
+        assertEquals(DecisionEffect.CANDIDATE_CREATED, audit.entries.single().effect)
+    }
+
+    @Test
+    fun `lo agotado tampoco se pierde si el modo paso a sombra`() = runTest {
+        val id = queue.enqueue(event(parser = parsedEvidence))!!
+        diedDuringAnalysis(id, 3)
+        mode = AnalysisMode.SHADOW
+        processor(interpreter({ purchase }), maxAttempts = 3).drain()
+        assertEquals(1, candidates.candidates.value.size)
+    }
+
+    @Test
+    fun `un aviso sin importe utilizable le llega al usuario y no solo a la auditoria`() = runTest {
+        queue.enqueue(event())
+        val twoOperations = purchase.copy(amounts = listOf(AmountMention(85_000, AmountRole.OPERATION, "PYG"), AmountMention(90_000, AmountRole.OPERATION, "PYG")))
+        processor(interpreter({ twoOperations })).drain()
+
+        assertTrue(candidates.candidates.value.isEmpty())
+        assertEquals(DecisionEffect.UNUSABLE, audit.entries.single().effect)
+        assertEquals("el usuario debia ser avisado", listOf("Banco"), notices)
+    }
+
+    @Test
+    fun `un fallo al avisar de un aviso ilegible no rompe el procesamiento`() = runTest {
+        queue.enqueue(event())
+        val none = purchase.copy(amounts = emptyList())
+        val p = ProcessAnalysisQueue(
+            queue = queue, interpreter = interpreter({ none }), decide = DecideRegistration(),
+            createCandidate = CreateCandidate(candidates, activity, candidateMutex),
+            findPendingCandidate = FindPendingCandidate(candidates),
+            autoRegister = AutoRegisterExpense(candidates, expenses, RegisterExpense(expenses, activity, expenseMutex), candidateMutex),
+            resolveCategory = ResolveCategory(expenses, catalog), announcer = announcer,
+            noticeAnnouncer = { error("sin permiso de notificaciones") }, audit = audit, modeProvider = { mode },
+        )
+        p.drain() // no debe lanzar
+        assertEquals(FakeAnalysisQueue.State.DONE, queue.state(1))
+    }
+
+    @Test
+    fun `un item que quedo PROCESSING por un drain abortado se retoma en el siguiente`() = runTest {
+        val id = queue.enqueue(event())!!
+        queue.markProcessing(id) // un drain anterior murio (cancelacion/excepcion) a mitad
+        assertEquals(FakeAnalysisQueue.State.PROCESSING, queue.state(id))
+
+        processor(interpreter({ purchase })).drain()
+
+        assertEquals(FakeAnalysisQueue.State.DONE, queue.state(id))
+        assertEquals(1, expenses.expenses.value.size)
+    }
+
+    @Test
+    fun `si el modelo ya no esta los avisos encolados salen por el flujo de siempre y no quedan pendientes`() = runTest {
+        queue.enqueue(event(parser = parsedEvidence, timestamp = 1_000_000L))
+        queue.enqueue(event(text = "Aviso sin parser", timestamp = 9_000_000L))
+
+        processor(interpreter({ purchase }), modelReady = false).drain()
+
+        assertTrue("ninguno debe quedar pendiente", queue.rows.none { it.state == FakeAnalysisQueue.State.PENDING })
+        assertEquals("el que tenia parser sale como candidato", 1, candidates.candidates.value.size)
+        assertEquals(listOf(DecisionEffect.FALLBACK_LEGACY, DecisionEffect.GAVE_UP), audit.entries.map { it.effect })
+        assertTrue("sin modelo no se registra nada solo", expenses.expenses.value.isEmpty())
     }
 
     // --- el log explica el por que sin datos financieros ---

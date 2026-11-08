@@ -68,8 +68,8 @@ class LiteRtTransactionInterpreter(
     private val engineDispatcher = Executors.newSingleThreadExecutor { Thread(it, "expense-transaction-ai") }.asCoroutineDispatcher()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
-    private var engine: Engine? = null
-    private var usingGpu = false
+    @Volatile private var usingGpu = false
+    private val engineHolder = ResourceHolder(engineDispatcher, { createEngine() }, { it.close() })
     private var constrainedDecoding = true
     private var idleJob: Job? = null
 
@@ -92,7 +92,7 @@ class LiteRtTransactionInterpreter(
     }
 
     private suspend fun generate(request: InterpretationRequest): String {
-        val first = engine ?: withContext(engineDispatcher) { createEngine() }.also { engine = it }
+        val first = engineHolder.get()
         return try {
             respond(first, request)
         } catch (cancelled: CancellationException) {
@@ -102,7 +102,7 @@ class LiteRtTransactionInterpreter(
             // GPU inicializo pero fallo al inferir (ej. OpenCL ausente): una vez en CPU.
             AppLog.w(TAG, "fallo la inferencia en GPU, se reintenta en CPU: ${error.javaClass.simpleName}")
             closeEngine()
-            val cpu = withContext(engineDispatcher) { createEngine(cpuOnly = true) }.also { engine = it }
+            val cpu = engineHolder.get { createEngine(cpuOnly = true) }
             respond(cpu, request)
         }
     }
@@ -146,6 +146,7 @@ class LiteRtTransactionInterpreter(
     private suspend fun Conversation.complete(contents: Contents, format: ResponseFormat?): String {
         val text = StringBuilder()
         val done = CompletableDeferred<String>()
+        var cancelRequestedByApp = false
         sendMessageAsync(
             contents,
             object : MessageCallback {
@@ -158,7 +159,7 @@ class LiteRtTransactionInterpreter(
                 }
 
                 override fun onError(throwable: Throwable) {
-                    done.completeExceptionally(throwable)
+                    done.completeExceptionally(NativeErrors.map(throwable, cancelRequestedByApp))
                 }
             },
             responseFormat = format,
@@ -167,6 +168,7 @@ class LiteRtTransactionInterpreter(
             return done.await()
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
+                cancelRequestedByApp = true
                 runCatching { cancelProcess() }
                 // Hasta que el motor confirme, no se cierra la conversacion: cerrarla en medio puede crashear.
                 runCatching { withTimeout(CANCEL_GRACE_MILLIS) { done.join() } }
@@ -197,18 +199,15 @@ class LiteRtTransactionInterpreter(
     }
 
     private suspend fun closeEngine() {
-        withContext(engineDispatcher) {
-            engine?.let { runCatching { it.close() } }
-            engine = null
-            usingGpu = false
-        }
+        engineHolder.release()
+        usingGpu = false
     }
 
     private fun scheduleIdleClose() {
         idleJob = scope.launch {
             delay(idleCloseMillis)
             mutex.withLock {
-                if (engine != null) {
+                if (engineHolder.current() != null) {
                     closeEngine()
                     AppLog.i(TAG, "motor cerrado por inactividad")
                 }

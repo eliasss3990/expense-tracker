@@ -10,6 +10,7 @@ import com.eliasgonzalez.expensetracker.domain.analysis.SourceTrust
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseCandidate
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -63,6 +64,18 @@ class HandleDetectedNotificationTest {
         assertTrue(candidates.candidates.value.isEmpty())
         assertTrue(announced.isEmpty())
         assertEquals(1, queue.rows.size)
+    }
+
+    @Test
+    fun `el evento encolado recuerda si el flujo de siempre ya creo el candidato`() = runTest {
+        mode = AnalysisMode.SHADOW
+        handler()(event(parsed))
+        assertTrue("en sombra el flujo de siempre ya lo creo", queue.rows.single().event.legacyHandled)
+
+        queue.rows.clear()
+        mode = AnalysisMode.AUTOMATIC
+        handler()(event(parsed))
+        assertFalse("en automatico el analisis es la unica via", queue.rows.single().event.legacyHandled)
     }
 
     @Test

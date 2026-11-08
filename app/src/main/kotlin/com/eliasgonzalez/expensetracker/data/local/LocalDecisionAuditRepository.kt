@@ -42,7 +42,8 @@ internal class LocalDecisionAuditRepository(private val db: SqlDatabase) : Decis
                 effect = enumOr(row.string("effect"), DecisionEffect.GAVE_UP),
                 expenseId = row.longOrNull("expense_id"),
                 candidateId = row.longOrNull("candidate_id"),
-                interpretations = InterpretationCodec.decode(row.string("interpretations")),
+                // Una fila danada no puede romper la lectura de todas las demas (es lo que se consulta para saber por que).
+                interpretations = runCatching { InterpretationCodec.decode(row.string("interpretations")) }.getOrDefault(emptyList()),
                 errorClass = row.stringOrNull("error_class"),
                 categoryId = row.stringOrNull("category_id"),
                 categorySource = row.stringOrNull("category_source")?.let { n -> CategorySource.entries.firstOrNull { it.name == n } },

@@ -68,6 +68,7 @@ internal object DbSchema {
             parser_confidence REAL,
             parser_curated INTEGER,
             trust TEXT NOT NULL,
+            legacy_handled INTEGER NOT NULL DEFAULT 0,
             state TEXT NOT NULL,
             attempts INTEGER NOT NULL DEFAULT 0,
             last_error TEXT,

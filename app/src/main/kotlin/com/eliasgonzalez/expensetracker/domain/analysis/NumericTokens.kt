@@ -26,6 +26,18 @@ internal object NumericTokens {
         return out
     }
 
+    private val GUARANI = Regex("""\bGs\b|₲|\bPYG\b|guaran""", RegexOption.IGNORE_CASE)
+    private val FOREIGN = Regex(
+        """\b(USD|EUR|BRL|ARS)\b|U[$]S|US[$]|€|[$]\s*\d|\bd[oó]lares?\b|\bpesos argentinos\b|\breales\b""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** El texto menciona guaranies (Gs, ₲, PYG). */
+    fun mentionsGuarani(text: String): Boolean = GUARANI.containsMatchIn(text)
+
+    /** El texto menciona otra moneda (USD, EUR, $, €...). */
+    fun mentionsForeignCurrency(text: String): Boolean = FOREIGN.containsMatchIn(text)
+
     fun normalizeForMatch(value: String): String =
         Normalizer.normalize(value.lowercase(), Normalizer.Form.NFD)
             .filter { it.isLetterOrDigit() }

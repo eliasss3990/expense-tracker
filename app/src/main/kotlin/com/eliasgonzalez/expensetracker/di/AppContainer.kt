@@ -49,14 +49,17 @@ import com.eliasgonzalez.expensetracker.domain.analysis.CandidateAnnouncer
 import com.eliasgonzalez.expensetracker.domain.analysis.DecideRegistration
 import com.eliasgonzalez.expensetracker.domain.analysis.DecisionAuditRepository
 import com.eliasgonzalez.expensetracker.domain.analysis.LocalModelManager
+import com.eliasgonzalez.expensetracker.domain.usecase.AnalysisRetryScheduler
 import com.eliasgonzalez.expensetracker.domain.usecase.AutoRegisterExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.HandleDetectedNotification
 import com.eliasgonzalez.expensetracker.domain.usecase.ListRecentDecisions
 import com.eliasgonzalez.expensetracker.domain.usecase.ProcessAnalysisQueue
 import com.eliasgonzalez.expensetracker.domain.usecase.ResolveCategory
 import com.eliasgonzalez.expensetracker.notification.AndroidCandidateAnnouncer
+import com.eliasgonzalez.expensetracker.notification.AndroidReviewNoticeAnnouncer
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 
 /**
@@ -174,9 +177,11 @@ class AppContainer(context: Context) {
         autoRegister = autoRegisterExpense,
         resolveCategory = resolveCategory,
         announcer = candidateAnnouncer,
+        noticeAnnouncer = AndroidReviewNoticeAnnouncer(context.applicationContext),
+        modelAvailability = localModelManager,
         audit = decisionAudit,
         modeProvider = analysisModeProvider,
-        scheduleRetry = { delayMillis -> scheduleAnalysisRetry(delayMillis) },
+        scheduleRetry = { delayMillis -> analysisRetryScheduler.schedule(delayMillis) },
     )
     val handleDetectedNotification = HandleDetectedNotification(
         queue = analysisQueue,
@@ -194,25 +199,16 @@ class AppContainer(context: Context) {
         AppLog.e("AppContainer", "Excepcion no controlada en el analisis", error)
     }
 
-    // Un solo reintento pendiente a la vez: si ya hay uno programado no se apilan mas.
-    private var retryJob: kotlinx.coroutines.Job? = null
-
-    private fun scheduleAnalysisRetry(delayMillis: Long) {
-        synchronized(this) {
-            if (retryJob?.isActive == true) return
-            retryJob = appScope.launch(analysisExceptionHandler) {
-                kotlinx.coroutines.delay(delayMillis)
-                processAnalysisQueue.drain()
-            }
-        }
-    }
+    // Reintentos con espera creciente (ver AnalysisRetryScheduler: un solo reintento esperando a la vez).
+    private val analysisRetryScheduler = AnalysisRetryScheduler(appScope + analysisExceptionHandler) { processAnalysisQueue.drain() }
 
     init {
         // Al arrancar: lo que quedo a medias por la muerte del proceso vuelve a la cola y se procesa.
         appScope.launch(analysisExceptionHandler) {
             if (!awaitHydrated()) return@launch
             processAnalysisQueue.recoverOnStartup()
-            if (localModelManager.isReady()) processAnalysisQueue.drain()
+            // Sin modelo tambien: lo que quedo encolado sale por el flujo de siempre en vez de quedar pendiente.
+            processAnalysisQueue.drain()
         }
     }
 

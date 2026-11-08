@@ -34,7 +34,7 @@ class HandleDetectedNotification(
         val mode = modeProvider.currentMode()
         val legacyFlow = !modelReady || mode == AnalysisMode.SHADOW
         if (legacyFlow) createLegacyCandidate(event)
-        if (modelReady && queue.enqueue(event) != null) onQueued()
+        if (modelReady && queue.enqueue(event.copy(legacyHandled = legacyFlow)) != null) onQueued()
     }
 
     private suspend fun createLegacyCandidate(event: AnalysisEvent) {
