@@ -20,6 +20,7 @@ class ChatSessionTest {
     private val today = LocalDate.of(2026, 11, 8)
     private val categories = listOf(CategoryOption("FOOD", "Comida"), CategoryOption("OTHER", "Otros"))
     private val repo = FakeExpenseRepository()
+    private val fixture = CategoryFixture()
     private val seen = mutableListOf<ChatRequest>()
     private var next: ChatIntent = ChatIntent.SmallTalk("hola")
 
@@ -27,7 +28,7 @@ class ChatSessionTest {
         val assistant = ChatAssistant(
             interpreter = { seen += it; next }, expenses = repo,
             register = RegisterExpense(repo, FakeActivityRepository()), edit = EditExpense(repo, FakeActivityRepository()),
-            delete = DeleteExpense(repo, FakeActivityRepository()), zone = ZoneId.of("America/Asuncion"), now = { 1_000_000L },
+            delete = DeleteExpense(repo, FakeActivityRepository()), categories = fixture.gateway, zone = ZoneId.of("America/Asuncion"), now = { 1_000_000L },
         )
         return ChatSession(assistant)
     }

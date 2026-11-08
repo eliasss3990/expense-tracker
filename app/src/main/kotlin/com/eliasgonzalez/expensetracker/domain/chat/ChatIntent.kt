@@ -36,6 +36,17 @@ sealed interface ChatIntent {
     /** Corrige la propuesta pendiente ("no, era 50000"): solo tiene sentido con una propuesta a la vista. */
     data class Revise(val field: EditableField, val newValue: String) : ChatIntent
 
+    /** Categorias: igual que con los gastos, el modelo solo propone; la app resuelve la categoria por nombre y pide confirmacion. */
+    data class CategoryCreate(val name: String) : ChatIntent
+    data class CategoryRename(val name: String, val newName: String) : ChatIntent
+    data class CategoryDelete(val name: String) : ChatIntent
+
+    /** Corrige el NOMBRE de una propuesta de categoria pendiente ("mejor llamala Mascotas"). */
+    data class ReviseName(val newName: String) : ChatIntent
+
+    /** Pregunta por lo que se puede hacer ("que podes hacer", "podes crear categorias?"): la app responde con un texto fijo. */
+    data object Help : ChatIntent
+
     /** Abandona la propuesta pendiente ("olvidalo"). */
     data object Cancel : ChatIntent
 

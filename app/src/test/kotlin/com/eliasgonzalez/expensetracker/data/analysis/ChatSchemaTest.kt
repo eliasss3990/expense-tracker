@@ -18,7 +18,10 @@ class ChatSchemaTest {
     @Test
     fun `hay una rama por accion y solo esas`() {
         assertEquals(
-            listOf("QUERY", "DESCRIBE", "CREATE", "EDIT", "DELETE", "REVISE", "CANCEL", "SMALLTALK"),
+            listOf(
+                "QUERY", "DESCRIBE", "CREATE", "EDIT", "DELETE", "REVISE", "CATEGORY_CREATE", "CATEGORY_RENAME", "CATEGORY_DELETE",
+                "REVISE_NAME", "CANCEL", "HELP", "SMALLTALK",
+            ),
             branches().map { it.actionName() },
         )
     }

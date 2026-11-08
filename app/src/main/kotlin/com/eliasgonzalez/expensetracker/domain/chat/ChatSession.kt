@@ -55,6 +55,7 @@ class ChatSession(private val assistant: ChatAssistant, private val maxTurns: In
         is ChatReply.Clarify -> "No pude: ${reply.reason}"
         is ChatReply.Talk -> reply.text.take(MAX_TURN_CHARS)
         ChatReply.Cancelled -> "Propuesta cancelada"
+        ChatReply.Help -> "Expliqué qué puedo hacer"
     }
 
     private fun remember(turn: ChatTurn) {

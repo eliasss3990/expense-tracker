@@ -1,5 +1,6 @@
 package com.eliasgonzalez.expensetracker.domain.chat
 
+import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import java.time.LocalDate
 
@@ -8,6 +9,12 @@ sealed interface ChatProposal {
     data class Create(val expense: Expense) : ChatProposal
     data class Edit(val before: Expense, val after: Expense) : ChatProposal
     data class Delete(val expense: Expense) : ChatProposal
+    data class CategoryCreate(val label: String, val color: String) : ChatProposal
+    data class CategoryRename(val before: CatalogEntry, val newLabel: String) : ChatProposal
+    data class CategoryDelete(val entry: CatalogEntry) : ChatProposal
+
+    /** Una categoria con gastos no se borra (los gastos viejos la siguen mostrando): se desactiva, como en la pantalla de Categorias. */
+    data class CategoryDeactivate(val entry: CatalogEntry) : ChatProposal
 }
 
 /** Una linea con lo que haria la propuesta; la usan el contexto del modelo y los logs, no la UI. */
@@ -15,11 +22,17 @@ fun ChatProposal.summary(): String = when (this) {
     is ChatProposal.Create -> "cargar ${expense.merchant} ${expense.amount} en ${expense.categoryId}"
     is ChatProposal.Edit -> "editar ${before.merchant}: monto ${before.amount} a ${after.amount}, categoria ${before.categoryId} a ${after.categoryId}, comercio ${before.merchant} a ${after.merchant}"
     is ChatProposal.Delete -> "borrar ${expense.merchant} ${expense.amount}"
+    is ChatProposal.CategoryCreate -> "crear la categoria $label"
+    is ChatProposal.CategoryRename -> "renombrar la categoria ${before.label} a $newLabel"
+    is ChatProposal.CategoryDelete -> "borrar la categoria ${entry.label}"
+    is ChatProposal.CategoryDeactivate -> "desactivar la categoria ${entry.label}"
 }
 
 enum class ClarifyReason {
     NOT_FOUND, AMBIGUOUS_REFERENCE, INVALID_AMOUNT, INVALID_DATE, UNKNOWN_CATEGORY, DATE_NOT_EDITABLE,
     INVALID_RANGE, UNREADABLE, EMPTY_PHRASE, NOTHING_TO_REVISE, PENDING_IS_DELETE,
+    CATEGORY_NOT_FOUND, AMBIGUOUS_CATEGORY, DUPLICATE_CATEGORY, INVALID_CATEGORY_NAME, PROTECTED_CATEGORY, ALREADY_INACTIVE,
+    WRONG_PENDING_KIND,
 }
 
 /** Respuesta estructurada: los textos los arma la UI; el dominio solo entrega hechos. */
@@ -35,6 +48,9 @@ sealed interface ChatReply {
     data class Clarify(val reason: ClarifyReason, val detail: String? = null) : ChatReply
     data class Talk(val text: String) : ChatReply
     data object Cancelled : ChatReply
+
+    /** Que puede y que no puede hacer el chat. El texto lo pone la UI: el modelo no inventa capacidades. */
+    data object Help : ChatReply
 }
 
 enum class ConfirmResult { DONE, STALE, FAILED }

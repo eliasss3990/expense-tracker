@@ -43,7 +43,9 @@ import com.eliasgonzalez.expensetracker.data.analysis.LiteRtChatInterpreter
 import com.eliasgonzalez.expensetracker.data.analysis.LiteRtGenerator
 import com.eliasgonzalez.expensetracker.domain.analysis.CategoryOption
 import com.eliasgonzalez.expensetracker.domain.chat.ChatSession
+import com.eliasgonzalez.expensetracker.domain.chat.CatalogCategoryGateway
 import com.eliasgonzalez.expensetracker.domain.chat.ChatAssistant
+import com.eliasgonzalez.expensetracker.ui.catalog.CATEGORY_COLOR_CHOICES
 import com.eliasgonzalez.expensetracker.data.analysis.LiteRtTransactionInterpreter
 import com.eliasgonzalez.expensetracker.data.analysis.SharedPreferencesAnalysisModeProvider
 import com.eliasgonzalez.expensetracker.data.local.AndroidSqlDatabase
@@ -178,16 +180,6 @@ class AppContainer(context: Context) {
     )
     private val resolveCategory = ResolveCategory(expenseRepository, catalogRepository, awaitHydrated)
 
-    // Chat de IA: el modelo solo interpreta (ChatInterpreter); el asistente valida y toda escritura espera confirmacion.
-    private val chatAssistant = ChatAssistant(
-        LiteRtChatInterpreter(liteRtGenerator), expenseRepository, registerExpense, editExpense, deleteExpense,
-    )
-
-    /** Un chat nuevo: sin nada del anterior. La sesion vive en memoria y se descarta al cerrar la pantalla. */
-    fun newChatSession(): ChatSession = ChatSession(chatAssistant)
-
-    /** Categorias activas del usuario: lo unico que el modelo puede elegir al cargar o editar. */
-    suspend fun chatCategories(): List<CategoryOption> = resolveCategory.options()
     // Tipos explicitos: la cola y el programador de reintentos se referencian entre si y Kotlin no puede inferirlos.
     private val processAnalysisQueue: ProcessAnalysisQueue = ProcessAnalysisQueue(
         queue = analysisQueue,
@@ -246,6 +238,21 @@ class AppContainer(context: Context) {
         // Orden de locks: catalogo, candidatos, gastos (ver DeleteCatalogEntry).
         alsoLock = listOf(candidateWriteMutex, expenseWriteMutex),
     )
+
+    // Chat de IA: el modelo solo interpreta (ChatInterpreter); el asistente valida y toda escritura espera confirmacion.
+    private val chatAssistant = ChatAssistant(
+        LiteRtChatInterpreter(liteRtGenerator), expenseRepository, registerExpense, editExpense, deleteExpense,
+        CatalogCategoryGateway(
+            catalogRepository, catalogUsage, createCatalogEntry, renameCatalogEntry, deleteCatalogEntry, setCatalogEntryActive,
+            palette = CATEGORY_COLOR_CHOICES,
+        ),
+    )
+
+    /** Un chat nuevo: sin nada del anterior. La sesion vive en memoria y se descarta al cerrar la pantalla. */
+    fun newChatSession(): ChatSession = ChatSession(chatAssistant)
+
+    /** Categorias activas del usuario: lo unico que el modelo puede elegir al cargar o editar. */
+    suspend fun chatCategories(): List<CategoryOption> = resolveCategory.options()
 }
 
 object ServiceLocator {

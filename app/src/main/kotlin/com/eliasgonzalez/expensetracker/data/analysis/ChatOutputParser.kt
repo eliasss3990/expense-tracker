@@ -42,7 +42,15 @@ internal object ChatOutputParser {
                     field = enumOrNull<EditableField>(json, "field") ?: return ChatIntent.Unreadable("field"),
                     newValue = json.optString("new_value"),
                 )
+                "CATEGORY_CREATE" -> ChatIntent.CategoryCreate(name(json, "name") ?: return ChatIntent.Unreadable("name"))
+                "CATEGORY_RENAME" -> ChatIntent.CategoryRename(
+                    name(json, "name") ?: return ChatIntent.Unreadable("name"),
+                    name(json, "new_name") ?: return ChatIntent.Unreadable("new_name"),
+                )
+                "CATEGORY_DELETE" -> ChatIntent.CategoryDelete(name(json, "name") ?: return ChatIntent.Unreadable("name"))
+                "REVISE_NAME" -> ChatIntent.ReviseName(name(json, "new_name") ?: return ChatIntent.Unreadable("new_name"))
                 "CANCEL" -> ChatIntent.Cancel
+                "HELP" -> ChatIntent.Help
                 "SMALLTALK" -> ChatIntent.SmallTalk(json.optString("reply"))
                 else -> ChatIntent.Unreadable("accion desconocida")
             }
@@ -59,6 +67,9 @@ internal object ChatOutputParser {
         if (start < 0 || end <= start) return null
         return runCatching { JSONObject(raw.substring(start, end + 1)) }.getOrNull()
     }
+
+    /** Un nombre de categoria: obligatorio, sin espacios sobrantes. */
+    private fun name(json: JSONObject, key: String): String? = json.optString(key).trim().takeIf { it.isNotEmpty() }
 
     private fun ref(json: JSONObject): ExpenseRef? = when (json.optString("reference")) {
         "LAST" -> ExpenseRef.Last

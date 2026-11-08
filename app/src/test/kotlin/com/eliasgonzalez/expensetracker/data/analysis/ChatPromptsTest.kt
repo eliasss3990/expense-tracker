@@ -43,6 +43,21 @@ class ChatPromptsTest {
     }
 
     @Test
+    fun `las preguntas por capacidades van a HELP y la charla es corta y sin ids internos`() {
+        val s = ChatPrompts.system(today, cats)
+        assertTrue("\"que podes hacer\" -> {\"action\":\"HELP\"}" in s)
+        assertTrue("nunca lista categorias ni ids internos" in s)
+    }
+
+    @Test
+    fun `el sistema ensena las acciones de categorias con un ejemplo cada una`() {
+        val s = ChatPrompts.system(today, cats)
+        for (a in listOf("CATEGORY_CREATE", "CATEGORY_RENAME", "CATEGORY_DELETE", "REVISE_NAME")) {
+            assertTrue("falta un ejemplo de $a", "\"action\":\"$a\"" in s)
+        }
+    }
+
+    @Test
     fun `sin contexto el mensaje es solo la frase`() {
         assertEquals("Frase actual del usuario: hola", ChatPrompts.user(req()))
     }

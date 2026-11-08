@@ -38,7 +38,7 @@ class ChatAssistantTest {
         assistant = ChatAssistant(
             interpreter = { interpretCalls++; intent },
             expenses = repo, register = RegisterExpense(repo, activity), edit = EditExpense(repo, activity),
-            delete = DeleteExpense(repo, activity), zone = zone, now = { at(today, 15) },
+            delete = DeleteExpense(repo, activity), categories = CategoryFixture().gateway, zone = zone, now = { at(today, 15) },
         )
     }
 
@@ -114,7 +114,7 @@ class ChatAssistantTest {
         val morning = at(today, 9)
         val early = ChatAssistant(
             interpreter = { intent }, expenses = repo, register = RegisterExpense(repo, activity), edit = EditExpense(repo, activity),
-            delete = DeleteExpense(repo, activity), zone = zone, now = { morning },
+            delete = DeleteExpense(repo, activity), categories = CategoryFixture().gateway, zone = zone, now = { morning },
         )
         intent = ChatIntent.Create(1000, "x", null, null)
         val created = (early.ask(ChatRequest("x", today, categories)) as ChatReply.Confirm).proposal as ChatProposal.Create
@@ -237,6 +237,13 @@ class ChatAssistantTest {
     fun `cambiar la fecha todavia no se puede y se dice`() {
         seed()
         assertEquals(ClarifyReason.DATE_NOT_EDITABLE, (ask(ChatIntent.Edit(ExpenseRef.Last, EditableField.DATE, "2026-11-07")) as ChatReply.Clarify).reason)
+    }
+
+    @Test
+    fun `una pregunta por capacidades se responde sin tocar nada`() {
+        seed()
+        assertEquals(ChatReply.Help, ask(ChatIntent.Help))
+        assertEquals(3, repo.expenses.value.size)
     }
 
     @Test

@@ -78,6 +78,32 @@ class ChatPresentationTest {
     }
 
     @Test
+    fun `la ayuda dice con claridad que no crea categorias ni cambia fechas`() {
+        val t = p.text(ChatReply.Help)
+        assertTrue("Categorías: crear una, renombrarla o borrarla" in t); assertTrue("color" in t); assertTrue("fecha" in t)
+        assertTrue("lo confirmás vos" in t)
+    }
+
+    @Test
+    fun `las propuestas de categorias dicen que cambia y aclaran lo de los gastos`() {
+        val food = com.eliasgonzalez.expensetracker.domain.model.CatalogEntry("category", "FOOD", "Comida", "#F59E0B")
+        assertTrue("Nombre: Mascotas" in p.text(ChatReply.Confirm(ChatProposal.CategoryCreate("Mascotas", "#22C55E"))))
+        val rename = p.text(ChatReply.Confirm(ChatProposal.CategoryRename(food, "Alimentación")))
+        assertTrue("Comida → Alimentación" in rename); assertTrue("se mantienen" in rename)
+        assertTrue("No se puede deshacer" in p.text(ChatReply.Confirm(ChatProposal.CategoryDelete(food))))
+        val off = p.text(ChatReply.Confirm(ChatProposal.CategoryDeactivate(food)))
+        assertTrue("no se puede borrar" in off); assertTrue("conservan" in off)
+    }
+
+    @Test
+    fun `la charla cortada a mitad de frase se recorta a la ultima oracion completa`() {
+        assertEquals("Hola, decime qué querés consultar.", p.tidy("Hola, decime qué querés consultar."))
+        assertEquals("Solo puedo ayudarte con tus gastos.", p.tidy("Solo puedo ayudarte con tus gastos. Mis categorías son FOOD, FUEL, T,"))
+        assertEquals("Mis categorías definidas son FOOD, FUEL…", p.tidy("Mis categorías definidas son FOOD, FUEL, GRO"))
+        assertEquals("", p.tidy("   "))
+    }
+
+    @Test
     fun `el resultado de confirmar se dice claro, incluido cuando no se toco nada`() {
         val d = ChatProposal.Delete(exp())
         assertEquals("Listo, borré Shell (₲80.000).", p.confirmed(ConfirmResult.DONE, d))

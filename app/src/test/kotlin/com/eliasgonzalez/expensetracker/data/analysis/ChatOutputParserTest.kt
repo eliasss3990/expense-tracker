@@ -61,6 +61,22 @@ class ChatOutputParserTest {
         )
         assertEquals(ChatIntent.Revise(EditableField.AMOUNT, "20000"), parse("""{"action":"REVISE","field":"AMOUNT","new_value":"20000"}"""))
         assertEquals(ChatIntent.Cancel, parse("""{"action":"CANCEL"}"""))
+        assertEquals(ChatIntent.Help, parse("""{"action":"HELP"}"""))
+    }
+
+    @Test
+    fun `categorias`() {
+        assertEquals(ChatIntent.CategoryCreate("Mascotas"), parse("""{"action":"CATEGORY_CREATE","name":" Mascotas "}"""))
+        assertEquals(ChatIntent.CategoryRename("Comida", "Alimentacion"), parse("""{"action":"CATEGORY_RENAME","name":"Comida","new_name":"Alimentacion"}"""))
+        assertEquals(ChatIntent.CategoryDelete("Suscripciones"), parse("""{"action":"CATEGORY_DELETE","name":"Suscripciones"}"""))
+        assertEquals(ChatIntent.ReviseName("Pets"), parse("""{"action":"REVISE_NAME","new_name":"Pets"}"""))
+    }
+
+    @Test
+    fun `una accion de categoria sin nombre es ilegible`() {
+        for (bad in listOf("""{"action":"CATEGORY_CREATE","name":""}""", """{"action":"CATEGORY_CREATE"}""", """{"action":"CATEGORY_RENAME","name":"Comida","new_name":" "}""", """{"action":"CATEGORY_DELETE","name":""}""", """{"action":"REVISE_NAME","new_name":""}""")) {
+            assertTrue("debia ser ilegible: $bad", parse(bad) is ChatIntent.Unreadable)
+        }
     }
 
     @Test

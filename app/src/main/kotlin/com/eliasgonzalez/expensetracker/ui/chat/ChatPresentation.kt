@@ -28,8 +28,9 @@ internal class ChatPresentation(
         is ChatReply.Detail -> "${describe(reply.expense)}\nFuente: ${reply.expense.source.name.lowercase()}."
         is ChatReply.Confirm -> proposal(reply.proposal)
         is ChatReply.Clarify -> clarify(reply)
-        is ChatReply.Talk -> reply.text.ifBlank { "Decime qué querés consultar o cargar." }
+        is ChatReply.Talk -> tidy(reply.text).ifBlank { "Decime qué querés consultar o cargar." }
         ChatReply.Cancelled -> "Listo, lo descarté. No se guardó nada."
+        ChatReply.Help -> HELP_TEXT
     }
 
     fun confirmed(result: ConfirmResult, proposal: ChatProposal): String = when (result) {
@@ -37,9 +38,26 @@ internal class ChatPresentation(
             is ChatProposal.Create -> "Listo, cargué ${proposal.expense.merchant} por ${money(proposal.expense.amount)}."
             is ChatProposal.Edit -> "Listo, actualicé ${proposal.after.merchant}."
             is ChatProposal.Delete -> "Listo, borré ${proposal.expense.merchant} (${money(proposal.expense.amount)})."
+            is ChatProposal.CategoryCreate -> "Listo, creé la categoría ${proposal.label}."
+            is ChatProposal.CategoryRename -> "Listo, la categoría ahora se llama ${proposal.newLabel}."
+            is ChatProposal.CategoryDelete -> "Listo, borré la categoría ${proposal.entry.label}."
+            is ChatProposal.CategoryDeactivate -> "Listo, desactivé la categoría ${proposal.entry.label}."
         }
-        ConfirmResult.STALE -> "Ese gasto cambió mientras tanto, así que no toqué nada. Pedímelo de nuevo."
+        ConfirmResult.STALE -> "Eso cambió mientras tanto, así que no toqué nada. Pedímelo de nuevo."
         ConfirmResult.FAILED -> "No pude guardarlo. Probá de nuevo."
+    }
+
+    /**
+     * La charla libre la genera el modelo con un tope de largo: si se corto a mitad de frase se recorta hasta la ultima
+     * oracion completa (o la ultima palabra) en vez de mostrar "…SUBSCRIPTIONS, T,".
+     */
+    fun tidy(raw: String): String {
+        val text = raw.trim()
+        if (text.isEmpty() || text.last() in ".!?…") return text
+        val end = text.indexOfLast { it in ".!?" }
+        if (end >= MIN_SENTENCE) return text.substring(0, end + 1)
+        val space = text.lastIndexOf(' ')
+        return (if (space > MIN_SENTENCE) text.substring(0, space) else text).trimEnd(',', ';', ':', ' ') + "…"
     }
 
     private fun summary(r: ChatReply.Summary): String {
@@ -76,6 +94,12 @@ internal class ChatPresentation(
     private fun proposal(p: ChatProposal): String = when (p) {
         is ChatProposal.Create -> "¿Son correctos los datos?\n" + fields(p.expense) + "\nSi algo está mal, decime qué cambiar."
         is ChatProposal.Delete -> "¿Borro este gasto?\n" + fields(p.expense) + "\nNo se puede deshacer."
+        is ChatProposal.CategoryCreate -> "¿Creo esta categoría?\n• Nombre: ${p.label}\nSi algo está mal, decime qué cambiar."
+        is ChatProposal.CategoryRename ->
+            "¿Renombro la categoría?\n• Nombre: ${p.before.label} → ${p.newLabel}\nLos gastos que ya la usan se mantienen.\nSi algo está mal, decime qué cambiar."
+        is ChatProposal.CategoryDelete -> "¿Borro la categoría ${p.entry.label}?\nNo tiene gastos. No se puede deshacer."
+        is ChatProposal.CategoryDeactivate ->
+            "La categoría ${p.entry.label} ya tiene gastos, así que no se puede borrar. ¿La desactivo?\nDeja de aparecer para elegir, pero tus gastos anteriores la conservan."
         is ChatProposal.Edit -> buildString {
             append("¿Hago este cambio?\n• Comercio: ${p.before.merchant}")
             if (p.after.merchant != p.before.merchant) append(" → ${p.after.merchant}")
@@ -101,6 +125,27 @@ internal class ChatPresentation(
         ClarifyReason.UNREADABLE -> "No entendí eso. ¿Podés decirlo de otra forma?"
         ClarifyReason.EMPTY_PHRASE -> "Escribime algo."
         ClarifyReason.PENDING_IS_DELETE -> "La propuesta pendiente es borrar ese gasto. Confirmala o cancelala; si querés otra cosa, decímelo después."
+        ClarifyReason.CATEGORY_NOT_FOUND -> if (c.detail != null) "No encontré ninguna categoría llamada \"${c.detail}\"." else "No encontré esa categoría."
+        ClarifyReason.AMBIGUOUS_CATEGORY -> "Hay varias categorías que coinciden con \"${c.detail}\". Decime el nombre completo."
+        ClarifyReason.DUPLICATE_CATEGORY -> "Ya existe una categoría llamada \"${c.detail}\" (o es el mismo nombre que tiene ahora)."
+        ClarifyReason.INVALID_CATEGORY_NAME -> "Ese nombre no sirve: tiene que tener texto y hasta 40 caracteres."
+        ClarifyReason.PROTECTED_CATEGORY -> "La categoría \"${c.detail}\" es la de respaldo y no se puede borrar ni desactivar."
+        ClarifyReason.ALREADY_INACTIVE -> "La categoría \"${c.detail}\" tiene gastos y ya está desactivada."
+        ClarifyReason.WRONG_PENDING_KIND -> "Esa corrección no aplica a la propuesta pendiente. Confirmala, cancelala o decime otra cosa."
         ClarifyReason.NOTHING_TO_REVISE -> "No tengo ninguna propuesta pendiente para corregir. Decime qué querés cargar, editar o borrar."
+    }
+
+    private companion object {
+        const val MIN_SENTENCE = 20
+        val HELP_TEXT = """
+            Puedo ayudarte con tus gastos:
+            • Consultar: cuánto gastaste hoy, ayer, esta semana, este mes o entre dos fechas, por categoría; contarlos, promediarlos o listarlos.
+            • Contarte de un gasto: el último, el más caro o el de un comercio.
+            • Cargar un gasto nuevo, editar el monto, el comercio o la categoría de uno, y borrarlo. Siempre te lo muestro antes y lo confirmás vos.
+
+            • Categorías: crear una, renombrarla o borrarla (si ya tiene gastos, la desactivo en vez de borrarla). También lo confirmás vos.
+
+            Lo que no puedo hacer: cambiar el color de una categoría, cambiar la fecha de un gasto ya cargado, ni tocar varios gastos o categorías de una vez.
+        """.trimIndent()
     }
 }

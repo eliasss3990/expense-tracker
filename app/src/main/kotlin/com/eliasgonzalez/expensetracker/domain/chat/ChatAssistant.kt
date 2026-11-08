@@ -1,13 +1,18 @@
 package com.eliasgonzalez.expensetracker.domain.chat
 
 import com.eliasgonzalez.expensetracker.domain.analysis.NumericTokens
+import com.eliasgonzalez.expensetracker.domain.model.CatalogEntry
 import com.eliasgonzalez.expensetracker.domain.model.CategoryIds
 import com.eliasgonzalez.expensetracker.domain.model.Expense
 import com.eliasgonzalez.expensetracker.domain.model.ExpenseSource
 import com.eliasgonzalez.expensetracker.domain.repository.ExpenseRepository
+import com.eliasgonzalez.expensetracker.domain.usecase.CatalogOutcome
+import com.eliasgonzalez.expensetracker.domain.usecase.CatalogRejection
 import com.eliasgonzalez.expensetracker.domain.usecase.DeleteExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.EditExpense
 import com.eliasgonzalez.expensetracker.domain.usecase.RegisterExpense
+import com.eliasgonzalez.expensetracker.domain.usecase.isValidCatalogLabel
+import com.eliasgonzalez.expensetracker.domain.usecase.normalizedCatalogLabel
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -25,6 +30,7 @@ class ChatAssistant(
     private val register: RegisterExpense,
     private val edit: EditExpense,
     private val delete: DeleteExpense,
+    private val categories: CategoryGateway,
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val now: () -> Long = System::currentTimeMillis,
 ) {
@@ -38,6 +44,11 @@ class ChatAssistant(
             is ChatIntent.Delete -> resolve(intent.ref).fold({ ChatReply.Confirm(ChatProposal.Delete(it)) }, { it })
             is ChatIntent.SmallTalk -> ChatReply.Talk(intent.reply.take(MAX_REPLY))
             is ChatIntent.Revise -> revise(intent, request)
+            ChatIntent.Help -> ChatReply.Help
+            is ChatIntent.CategoryCreate -> categoryCreate(intent)
+            is ChatIntent.CategoryRename -> categoryRename(intent)
+            is ChatIntent.CategoryDelete -> categoryDelete(intent)
+            is ChatIntent.ReviseName -> reviseName(intent, request)
             ChatIntent.Cancel -> if (request.pending != null) ChatReply.Cancelled else ChatReply.Clarify(ClarifyReason.NOTHING_TO_REVISE)
             is ChatIntent.Unreadable -> ChatReply.Clarify(ClarifyReason.UNREADABLE)
         }
@@ -58,11 +69,100 @@ class ChatAssistant(
             } else {
                 delete(proposal.expense.id); ConfirmResult.DONE
             }
+            is ChatProposal.CategoryCreate -> outcome(categories.create(proposal.label, proposal.color))
+            is ChatProposal.CategoryRename ->
+                if (categories.find(proposal.before.id) != proposal.before) ConfirmResult.STALE
+                else outcome(categories.rename(proposal.before.id, proposal.newLabel))
+            is ChatProposal.CategoryDelete ->
+                if (categories.find(proposal.entry.id) != proposal.entry) ConfirmResult.STALE else outcome(categories.delete(proposal.entry.id))
+            is ChatProposal.CategoryDeactivate ->
+                if (categories.find(proposal.entry.id) != proposal.entry) ConfirmResult.STALE else outcome(categories.setActive(proposal.entry.id, false))
         }
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
         ConfirmResult.FAILED
+    }
+
+    /** Lo que cambio entre la propuesta y la confirmacion (otro dato, otro nombre repetido, ya en uso) es STALE, no un error. */
+    private fun outcome(result: CatalogOutcome): ConfirmResult = when (result) {
+        is CatalogOutcome.Success -> ConfirmResult.DONE
+        is CatalogOutcome.Rejected -> when (result.reason) {
+            CatalogRejection.NOT_FOUND, CatalogRejection.DUPLICATE_LABEL, CatalogRejection.IN_USE -> ConfirmResult.STALE
+            else -> ConfirmResult.FAILED
+        }
+    }
+
+    private fun categoryCreate(c: ChatIntent.CategoryCreate): ChatReply {
+        val label = c.name.normalizedCatalogLabel()
+        if (!label.isValidCatalogLabel()) return ChatReply.Clarify(ClarifyReason.INVALID_CATEGORY_NAME)
+        if (labelTaken(label, exceptId = null)) return ChatReply.Clarify(ClarifyReason.DUPLICATE_CATEGORY, label)
+        return ChatReply.Confirm(ChatProposal.CategoryCreate(label, categories.nextColor()))
+    }
+
+    private fun categoryRename(r: ChatIntent.CategoryRename): ChatReply {
+        val entry = resolveCategory(r.name).fold({ it }, { return it })
+        val label = r.newName.normalizedCatalogLabel()
+        if (!label.isValidCatalogLabel()) return ChatReply.Clarify(ClarifyReason.INVALID_CATEGORY_NAME)
+        if (label == entry.label || labelTaken(label, exceptId = entry.id)) return ChatReply.Clarify(ClarifyReason.DUPLICATE_CATEGORY, label)
+        return ChatReply.Confirm(ChatProposal.CategoryRename(entry, label))
+    }
+
+    private fun categoryDelete(d: ChatIntent.CategoryDelete): ChatReply {
+        val entry = resolveCategory(d.name).fold({ it }, { return it })
+        if (entry.protected) return ChatReply.Clarify(ClarifyReason.PROTECTED_CATEGORY, entry.label)
+        if (!categories.isInUse(entry.id)) return ChatReply.Confirm(ChatProposal.CategoryDelete(entry))
+        if (!entry.active) return ChatReply.Clarify(ClarifyReason.ALREADY_INACTIVE, entry.label)
+        return ChatReply.Confirm(ChatProposal.CategoryDeactivate(entry))
+    }
+
+    /** Corrige el nombre de una propuesta de categoria pendiente. */
+    private fun reviseName(r: ChatIntent.ReviseName, request: ChatRequest): ChatReply {
+        val label = r.newName.normalizedCatalogLabel()
+        return when (val pending = request.pending) {
+            is ChatProposal.CategoryCreate -> when {
+                !label.isValidCatalogLabel() -> ChatReply.Clarify(ClarifyReason.INVALID_CATEGORY_NAME)
+                labelTaken(label, exceptId = null) -> ChatReply.Clarify(ClarifyReason.DUPLICATE_CATEGORY, label)
+                else -> ChatReply.Confirm(pending.copy(label = label))
+            }
+            is ChatProposal.CategoryRename -> when {
+                !label.isValidCatalogLabel() -> ChatReply.Clarify(ClarifyReason.INVALID_CATEGORY_NAME)
+                label == pending.before.label || labelTaken(label, exceptId = pending.before.id) ->
+                    ChatReply.Clarify(ClarifyReason.DUPLICATE_CATEGORY, label)
+                else -> ChatReply.Confirm(pending.copy(newLabel = label))
+            }
+            null -> ChatReply.Clarify(ClarifyReason.NOTHING_TO_REVISE)
+            else -> ChatReply.Clarify(ClarifyReason.WRONG_PENDING_KIND)
+        }
+    }
+
+    private fun labelTaken(label: String, exceptId: String?): Boolean {
+        val needle = NumericTokens.normalizeForMatch(label)
+        return categories.categories().any { it.id != exceptId && NumericTokens.normalizeForMatch(it.label) == needle }
+    }
+
+    /** Resuelve una categoria POR NOMBRE contra el catalogo real (el modelo no ve ni elige ids): exacto primero, luego "contiene". */
+    private fun resolveCategory(name: String): CategoryResolution {
+        val needle = NumericTokens.normalizeForMatch(name)
+        if (needle.isBlank()) return CategoryResolution.Missing(ChatReply.Clarify(ClarifyReason.CATEGORY_NOT_FOUND))
+        val all = categories.categories()
+        val exact = all.filter { NumericTokens.normalizeForMatch(it.label) == needle }
+        val hits = exact.ifEmpty { all.filter { NumericTokens.normalizeForMatch(it.label).contains(needle) } }
+        return when {
+            hits.isEmpty() -> CategoryResolution.Missing(ChatReply.Clarify(ClarifyReason.CATEGORY_NOT_FOUND, name.take(MAX_MERCHANT)))
+            hits.size == 1 -> CategoryResolution.Found(hits.single())
+            else -> CategoryResolution.Missing(ChatReply.Clarify(ClarifyReason.AMBIGUOUS_CATEGORY, name.take(MAX_MERCHANT)))
+        }
+    }
+
+    private sealed interface CategoryResolution {
+        data class Found(val entry: CatalogEntry) : CategoryResolution
+        data class Missing(val reply: ChatReply) : CategoryResolution
+    }
+
+    private inline fun <T> CategoryResolution.fold(found: (CatalogEntry) -> T, missing: (ChatReply) -> T): T = when (this) {
+        is CategoryResolution.Found -> found(entry)
+        is CategoryResolution.Missing -> missing(reply)
     }
 
     private fun query(q: ChatIntent.Query, today: LocalDate): ChatReply {
@@ -122,6 +222,8 @@ class ChatAssistant(
             if (fixed == null) invalidField(r.field, r.newValue) else ChatReply.Confirm(ChatProposal.Edit(pending.before, fixed))
         }
         is ChatProposal.Delete -> ChatReply.Clarify(ClarifyReason.PENDING_IS_DELETE)
+        is ChatProposal.CategoryCreate, is ChatProposal.CategoryRename, is ChatProposal.CategoryDelete,
+        is ChatProposal.CategoryDeactivate -> ChatReply.Clarify(ClarifyReason.WRONG_PENDING_KIND)
         null -> ChatReply.Clarify(ClarifyReason.NOTHING_TO_REVISE)
     }
 
