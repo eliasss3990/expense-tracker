@@ -49,6 +49,14 @@ class ChatPresentationTest {
     }
 
     @Test
+    fun `una lista dice de que periodo es, tambien cuando esta vacia`() {
+        val from = LocalDate.of(2026, 10, 26); val to = LocalDate.of(2026, 11, 1)
+        assertEquals("No encontré gastos en Comida del 26/10 al 01/11.", p.text(ChatReply.Listing(emptyList(), 0, 0, from, to, "FOOD")))
+        val t = p.text(ChatReply.Listing(listOf(exp()), 1, 80_000, from, to, null))
+        assertTrue(t.startsWith("1 gasto del 26/10 al 01/11, ₲80.000 en total:"))
+    }
+
+    @Test
     fun `la propuesta de cargar pide confirmacion con todos los datos y ofrece corregir`() {
         val t = p.text(ChatReply.Confirm(ChatProposal.Create(exp(12_000, "Cafe", "FOOD"))))
         assertTrue(t.startsWith("¿Son correctos los datos?"))

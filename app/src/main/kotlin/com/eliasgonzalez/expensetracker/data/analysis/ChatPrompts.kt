@@ -21,8 +21,8 @@ Eres el interprete de un asistente de gastos personales. Lees lo que dice el usu
 Hoy es $today ($weekday).
 Categorias validas (usa el id): $ids.
 Acciones:
-QUERY: consultar total (SUM), cantidad (COUNT), lista (LIST) o promedio (AVERAGE). Eliges un period: ALL (sin limite de fechas, "en total"), TODAY, YESTERDAY, THIS_WEEK, LAST_WEEK, THIS_MONTH, LAST_MONTH, LAST_7_DAYS, LAST_30_DAYS, o CUSTOM solo si el usuario da fechas concretas (entonces from y to; en los demas casos from y to van vacios). Si el usuario no menciona ninguna fecha ni periodo, el period es ALL (NO asumas hoy). No calcules fechas vos: la aplicacion las calcula. La categoria ALL = todas.
-DESCRIBE: hablar de un gasto concreto. CREATE: cargar un gasto nuevo. EDIT: cambiar un gasto que ya existe.
+QUERY: consultar total (SUM), cantidad (COUNT), lista (LIST) o promedio (AVERAGE). Eliges un period: ALL (sin limite de fechas, "en total"), TODAY, YESTERDAY, THIS_WEEK, LAST_WEEK, THIS_MONTH, LAST_MONTH, LAST_7_DAYS, LAST_30_DAYS, o CUSTOM solo si el usuario da fechas concretas (entonces from y to; en los demas casos from y to van vacios). Si el usuario no menciona ninguna fecha ni periodo, el period es ALL (NO asumas hoy), salvo que se refiera a lo ya consultado: si dice "esos gastos", "ellos", "y de ...?" o pide otra cosa sobre lo mismo, reutiliza el period y la category de la "Ultima consulta" y cambia solo lo que pide; si da un periodo o categoria nuevo, usa el nuevo y conserva el resto. No calcules fechas vos: la aplicacion las calcula. La categoria ALL = todas.
+DESCRIBE: hablar de UN solo gasto concreto. Para ver, listar o describir VARIOS gastos, o los de un periodo, usa QUERY con metric LIST. CREATE: cargar un gasto nuevo. EDIT: cambiar un gasto que ya existe.
 DELETE: borrar UN gasto. REVISE: corregir la propuesta pendiente (cuando el usuario dice "no, era...", "mejor...", "cambia el monto a..."). CANCEL: el usuario abandona la propuesta pendiente ("olvidalo", "cancela"). CATEGORY_CREATE / CATEGORY_RENAME / CATEGORY_DELETE: crear, renombrar o borrar una CATEGORIA (no un gasto), siempre por su nombre. REVISE_NAME: corregir el NOMBRE de una propuesta de categoria pendiente. HELP: el usuario PREGUNTA que podes hacer o si podes hacer algo ("puedes...?", "podes...?"; una pregunta NO es una orden y no se ejecuta), o si podes hacer algo que NO es consultar, cargar, editar o borrar gastos (por ejemplo crear categorias, cambiar ajustes). SMALLTALK: solo saludos, agradecimientos o charla breve.
 reference: LAST = el ultimo gasto, MOST_EXPENSIVE = el mas caro, BY_FILTER = el que se nombra con una palabra (comercio) en "text".
 En CREATE: merchant es el LUGAR o comercio donde se pago y SOLO si el usuario lo nombra ("en Shell", "en Stock"); si no lo nombra va "". Si el usuario nombra un comercio o marca ("en Zara", "en Shell"), merchant es ese nombre. description es una frase corta y descriptiva de la compra, armada con lo que el usuario dijo: que se compro y, si lo dijo, donde ("Compra de pan en el supermercado", "Carga de nafta en Shell"). No inventes datos que el usuario no dijo. Nunca pongas el producto en merchant. Fechas AAAA-MM-DD. Montos enteros en guaranies (80 mil = 80000). Si hay una propuesta pendiente y el usuario la corrige, es REVISE, no EDIT ni CREATE.
@@ -65,6 +65,10 @@ En SMALLTALK "reply" es UNA oracion corta (maximo 100 caracteres) y nunca lista 
                 val who = if (it.role == TurnRole.USER) "Usuario" else "Asistente"
                 appendLine("$who: ${it.text.take(MAX_HISTORY_CHARS)}")
             }
+        }
+        request.lastQuery?.let {
+            val dates = if (it.from != null || it.to != null) " (del ${it.from ?: "inicio"} al ${it.to ?: "hoy"})" else ""
+            appendLine("Ultima consulta de este chat: metric=${it.metric} period=${it.period} category=${it.categoryId ?: "ALL"}$dates")
         }
         request.pending?.let { appendLine("Propuesta pendiente de confirmar: ${it.summary()}") }
         append("Frase actual del usuario: ${request.phrase.take(MAX_PHRASE_CHARS)}")

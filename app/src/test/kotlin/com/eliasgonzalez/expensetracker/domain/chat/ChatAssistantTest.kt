@@ -83,6 +83,21 @@ class ChatAssistantTest {
     }
 
     @Test
+    fun `las respuestas de consulta llevan su alcance para poder referirse a el despues`() {
+        seed()
+        val sum = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.THIS_WEEK, null, null, "FOOD")) as ChatReply.Summary
+        assertEquals(ChatPeriod.THIS_WEEK, sum.period); assertEquals("FOOD", sum.categoryId)
+        assertEquals(LocalDate.of(2026, 11, 2), sum.from)
+        for (metric in listOf(ChatMetric.COUNT, ChatMetric.AVERAGE)) {
+            val r = ask(ChatIntent.Query(metric, ChatPeriod.THIS_MONTH, null, null, null)) as ChatReply.Summary
+            assertEquals("$metric perdio el periodo", ChatPeriod.THIS_MONTH, r.period)
+        }
+        val list = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.LAST_WEEK, null, null, null)) as ChatReply.Listing
+        assertEquals(ChatPeriod.LAST_WEEK, list.period)
+        assertEquals(LocalDate.of(2026, 10, 26), list.from); assertEquals(LocalDate.of(2026, 11, 1), list.to)
+    }
+
+    @Test
     fun `un periodo propio sin ninguna fecha se pregunta y no suma todo el historial`() {
         seed()
         assertEquals(ChatReply.Clarify(ClarifyReason.INVALID_RANGE), ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, null, null, null)))

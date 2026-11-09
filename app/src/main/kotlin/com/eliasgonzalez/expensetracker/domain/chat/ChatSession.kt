@@ -16,10 +16,14 @@ class ChatSession(private val assistant: ChatAssistant, private val maxTurns: In
     var pending: ChatProposal? = null
         private set
 
+    /** El alcance de la ultima consulta de ESTE chat; se renueva con cada consulta y lo demas no lo toca. */
+    var lastQuery: QueryScope? = null
+        private set
+
     val history: List<ChatTurn> get() = turns.toList()
 
     suspend fun send(phrase: String, today: LocalDate, categories: List<CategoryOption>): ChatReply {
-        val reply = assistant.ask(ChatRequest(phrase, today, categories, history = history, pending = pending))
+        val reply = assistant.ask(ChatRequest(phrase, today, categories, history = history, pending = pending, lastQuery = lastQuery))
         if (phrase.isNotBlank()) {
             remember(ChatTurn(TurnRole.USER, phrase.take(MAX_TURN_CHARS)))
             remember(ChatTurn(TurnRole.ASSISTANT, summarize(reply)))
@@ -27,6 +31,8 @@ class ChatSession(private val assistant: ChatAssistant, private val maxTurns: In
         when (reply) {
             is ChatReply.Confirm -> pending = reply.proposal
             ChatReply.Cancelled -> pending = null
+            is ChatReply.Summary -> lastQuery = QueryScope(reply.metric, reply.period, reply.from, reply.to, reply.categoryId)
+            is ChatReply.Listing -> lastQuery = QueryScope(ChatMetric.LIST, reply.period, reply.from, reply.to, reply.categoryId)
             else -> Unit // una consulta o una pregunta no descarta la propuesta que el usuario tiene a la vista
         }
         return reply

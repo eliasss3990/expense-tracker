@@ -64,6 +64,15 @@ sealed interface ChatIntent {
     data class Unreadable(val reason: String) : ChatIntent
 }
 
+/** Lo que abarco la ultima consulta del chat (con las fechas YA resueltas): para que "esos gastos" o "y en comida?" tengan a que referirse. */
+data class QueryScope(
+    val metric: ChatMetric,
+    val period: ChatPeriod,
+    val from: LocalDate?,
+    val to: LocalDate?,
+    val categoryId: String?,
+)
+
 enum class TurnRole { USER, ASSISTANT }
 
 /** Un mensaje del chat ABIERTO. Vive solo en memoria mientras dure ese chat (ver [ChatSession]). */
@@ -79,6 +88,8 @@ data class ChatRequest(
     val categories: List<CategoryOption>,
     val history: List<ChatTurn> = emptyList(),
     val pending: ChatProposal? = null,
+    /** La ultima consulta de este chat, si hubo una. */
+    val lastQuery: QueryScope? = null,
 )
 
 /** Puerto del modelo para el chat: cambiar de modelo o de motor es otra implementacion, no tocar el dominio. */

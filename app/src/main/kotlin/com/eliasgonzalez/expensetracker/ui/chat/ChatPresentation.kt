@@ -82,10 +82,10 @@ internal class ChatPresentation(
     }
 
     private fun listing(r: ChatReply.Listing): String {
-        if (r.totalCount == 0) return "No encontré gastos."
+        if (r.totalCount == 0) return "No encontré gastos${scope(r.from, r.to, r.categoryId)}."
         val lines = r.items.joinToString("\n") { "• ${dateTime.format(Instant.ofEpochMilli(it.occurredAt))}  ${it.merchant} — ${money(it.amount)}" }
         val more = if (r.totalCount > r.items.size) "\n…y ${r.totalCount - r.items.size} más." else ""
-        return "${r.totalCount} ${if (r.totalCount == 1) "gasto" else "gastos"}, ${money(r.total)} en total:\n$lines$more"
+        return "${r.totalCount} ${if (r.totalCount == 1) "gasto" else "gastos"}${scope(r.from, r.to, r.categoryId)}, ${money(r.total)} en total:\n$lines$more"
     }
 
     private fun describe(e: Expense) =

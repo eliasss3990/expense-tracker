@@ -178,11 +178,11 @@ class ChatAssistant(
             .sortedWith(compareByDescending<Expense> { it.occurredAt }.thenByDescending { it.id })
         val total = matching.sumOf { it.amount }
         return when (q.metric) {
-            ChatMetric.LIST -> ChatReply.Listing(matching.take(MAX_LIST), matching.size, total)
-            ChatMetric.COUNT -> ChatReply.Summary(q.metric, total, matching.size, from, to, q.categoryId)
-            ChatMetric.SUM -> ChatReply.Summary(q.metric, total, matching.size, from, to, q.categoryId)
+            ChatMetric.LIST -> ChatReply.Listing(matching.take(MAX_LIST), matching.size, total, from, to, q.categoryId, q.period)
+            ChatMetric.COUNT -> ChatReply.Summary(q.metric, total, matching.size, from, to, q.categoryId, q.period)
+            ChatMetric.SUM -> ChatReply.Summary(q.metric, total, matching.size, from, to, q.categoryId, q.period)
             ChatMetric.AVERAGE ->
-                ChatReply.Summary(q.metric, if (matching.isEmpty()) 0 else total / matching.size, matching.size, from, to, q.categoryId)
+                ChatReply.Summary(q.metric, if (matching.isEmpty()) 0 else total / matching.size, matching.size, from, to, q.categoryId, q.period)
         }
     }
 
