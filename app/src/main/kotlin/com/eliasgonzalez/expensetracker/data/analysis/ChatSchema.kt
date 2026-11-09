@@ -14,6 +14,7 @@ internal object ChatSchema {
     private const val MAX_TEXT = 80
     private const val MAX_DESCRIPTION = 120
     private const val MAX_REPLY = 160
+    private const val MAX_LIMIT = 20
     const val ALL = "ALL"
 
     fun build(categories: List<CategoryOption>): String {
@@ -28,8 +29,10 @@ internal object ChatSchema {
                         "period" to enumOf(*ChatPeriod.entries.map { it.name }.toTypedArray()),
                         "from" to optionalDate(), "to" to optionalDate(),
                         "category" to enumOf(ALL, *categoryIds.toTypedArray()),
+                        "text" to text(),
+                        "sort" to enumOf("RECENT", "AMOUNT"),
+                        "limit" to JSONObject().put("type", "integer").put("minimum", 0).put("maximum", MAX_LIMIT),
                     ),
-                    action("DESCRIBE", "reference" to reference(), "text" to text()),
                     action(
                         "CREATE",
                         "amount" to JSONObject().put("type", "integer"),

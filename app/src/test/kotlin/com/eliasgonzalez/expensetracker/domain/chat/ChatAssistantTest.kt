@@ -83,6 +83,21 @@ class ChatAssistantTest {
     }
 
     @Test
+    fun `las respuestas de consulta llevan su alcance para poder referirse a el despues`() {
+        seed()
+        val sum = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.THIS_WEEK, null, null, "FOOD")) as ChatReply.Summary
+        assertEquals(ChatPeriod.THIS_WEEK, sum.period); assertEquals("FOOD", sum.categoryId)
+        assertEquals(LocalDate.of(2026, 11, 2), sum.from)
+        for (metric in listOf(ChatMetric.COUNT, ChatMetric.AVERAGE)) {
+            val r = ask(ChatIntent.Query(metric, ChatPeriod.THIS_MONTH, null, null, null)) as ChatReply.Summary
+            assertEquals("$metric perdio el periodo", ChatPeriod.THIS_MONTH, r.period)
+        }
+        val list = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.LAST_WEEK, null, null, null)) as ChatReply.Listing
+        assertEquals(ChatPeriod.LAST_WEEK, list.period)
+        assertEquals(LocalDate.of(2026, 10, 26), list.from); assertEquals(LocalDate.of(2026, 11, 1), list.to)
+    }
+
+    @Test
     fun `un periodo propio sin ninguna fecha se pregunta y no suma todo el historial`() {
         seed()
         assertEquals(ChatReply.Clarify(ClarifyReason.INVALID_RANGE), ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.CUSTOM, null, null, null)))
@@ -145,11 +160,36 @@ class ChatAssistantTest {
     }
 
     @Test
-    fun `describir resuelve el ultimo y el mas caro con los datos de la app`() {
+    fun `hablar de UN gasto es una lista de uno, el ultimo, el mas caro o el de un comercio`() {
         seed()
-        assertEquals("Cafe Central", ((ask(ChatIntent.Describe(ExpenseRef.Last))) as ChatReply.Detail).expense.merchant)
-        assertEquals("Shell", ((ask(ChatIntent.Describe(ExpenseRef.MostExpensive))) as ChatReply.Detail).expense.merchant)
-        assertEquals("Netflix", ((ask(ChatIntent.Describe(ExpenseRef.ByText("netflix")))) as ChatReply.Detail).expense.merchant)
+        fun one(sort: ChatSort, text: String = "") = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.ALL, null, null, null, text, sort, 1))
+        assertEquals("Cafe Central", (one(ChatSort.RECENT) as ChatReply.Detail).expense.merchant)
+        assertEquals("Shell", (one(ChatSort.AMOUNT) as ChatReply.Detail).expense.merchant)
+        assertEquals("Netflix", (one(ChatSort.RECENT, "netflix") as ChatReply.Detail).expense.merchant)
+        // sin ningun gasto que coincida no hay detalle: es una lista vacia que dice por que
+        val none = one(ChatSort.RECENT, "farmacia") as ChatReply.Listing
+        assertEquals(0, none.totalCount); assertEquals("farmacia", none.text)
+    }
+
+    @Test
+    fun `el texto filtra por comercio o descripcion tambien en totales, y el orden y el limite se respetan`() {
+        seed(); runBlocking { repo.save(expense(5_000, "Kiosco", LocalDate.of(2026, 11, 3)).copy(description = "Cafe y medialunas")) }
+        val sum = ask(ChatIntent.Query(ChatMetric.SUM, ChatPeriod.ALL, null, null, null, text = "cafe")) as ChatReply.Summary
+        assertEquals(17_000L, sum.total); assertEquals(2, sum.count); assertEquals("cafe", sum.text) // Cafe Central + descripcion del Kiosco
+        val top2 = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.ALL, null, null, null, sort = ChatSort.AMOUNT, limit = 2)) as ChatReply.Listing
+        assertEquals(listOf("Shell", "Netflix"), top2.items.map { it.merchant })
+        val recent = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.ALL, null, null, null)) as ChatReply.Listing
+        assertEquals("Cafe Central", recent.items.first().merchant); assertEquals(4, recent.totalCount)
+    }
+
+    @Test
+    fun `un limite fuera de rango se acota`() {
+        seed()
+        runBlocking { repeat(25) { repo.save(expense(1_000L + it, "Gasto $it", LocalDate.of(2026, 10, 1).plusDays(it.toLong()))) } }
+        val r = ask(ChatIntent.Query(ChatMetric.LIST, ChatPeriod.ALL, null, null, null, limit = 500)) as ChatReply.Listing
+        assertEquals("tope de la lista", 20, r.items.size); assertEquals(20, r.totalCount)
+        val neg = ask(ChatIntent.Query(ChatMetric.COUNT, ChatPeriod.ALL, null, null, null, limit = -5)) as ChatReply.Summary
+        assertEquals(28, neg.count)
     }
 
     @Test

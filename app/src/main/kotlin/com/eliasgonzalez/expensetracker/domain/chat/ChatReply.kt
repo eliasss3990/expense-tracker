@@ -40,9 +40,16 @@ sealed interface ChatReply {
     data class Summary(
         val metric: ChatMetric, val total: Long, val count: Int,
         val from: LocalDate?, val to: LocalDate?, val categoryId: String?,
+        val period: ChatPeriod = ChatPeriod.CUSTOM,
+        val text: String = "",
     ) : ChatReply
 
-    data class Listing(val items: List<Expense>, val totalCount: Int, val total: Long) : ChatReply
+    data class Listing(
+        val items: List<Expense>, val totalCount: Int, val total: Long,
+        val from: LocalDate? = null, val to: LocalDate? = null, val categoryId: String? = null,
+        val period: ChatPeriod = ChatPeriod.CUSTOM,
+        val text: String = "",
+    ) : ChatReply
     data class Detail(val expense: Expense) : ChatReply
     data class Confirm(val proposal: ChatProposal) : ChatReply
     data class Clarify(val reason: ClarifyReason, val detail: String? = null) : ChatReply

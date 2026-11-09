@@ -5,6 +5,9 @@ import java.time.LocalDate
 
 enum class ChatMetric { SUM, COUNT, LIST, AVERAGE }
 
+/** Como ordenar los gastos de una consulta: los mas recientes primero, o los de mayor monto primero. */
+enum class ChatSort { RECENT, AMOUNT }
+
 enum class EditableField { AMOUNT, MERCHANT, DESCRIPTION, CATEGORY, DATE }
 
 /** A que gasto se refiere el usuario. Lo resuelve la APP contra sus datos; el modelo nunca ve ni elige ids. */
@@ -26,8 +29,12 @@ sealed interface ChatIntent {
         val from: LocalDate?,
         val to: LocalDate?,
         val categoryId: String?,
+        /** Palabra del comercio o la descripcion para filtrar ("" = sin filtro). Tambien sirve para totales por comercio. */
+        val text: String = "",
+        val sort: ChatSort = ChatSort.RECENT,
+        /** Cuantos gastos como maximo (0 = todos). Con LIST y 1 es "hablar de UN gasto": el mas reciente o el de mayor monto. */
+        val limit: Int = 0,
     ) : ChatIntent
-    data class Describe(val ref: ExpenseRef) : ChatIntent
     /**
      * [merchant] es el LUGAR donde se pago y solo si el usuario lo nombro ("en Shell"); [description] es QUE se compro ("nafta").
      * Mezclarlos (guardar "nafta" como comercio) era el error original.
@@ -64,6 +71,16 @@ sealed interface ChatIntent {
     data class Unreadable(val reason: String) : ChatIntent
 }
 
+/** Lo que abarco la ultima consulta del chat (con las fechas YA resueltas): para que "esos gastos" o "y en comida?" tengan a que referirse. */
+data class QueryScope(
+    val metric: ChatMetric,
+    val period: ChatPeriod,
+    val from: LocalDate?,
+    val to: LocalDate?,
+    val categoryId: String?,
+    val text: String = "",
+)
+
 enum class TurnRole { USER, ASSISTANT }
 
 /** Un mensaje del chat ABIERTO. Vive solo en memoria mientras dure ese chat (ver [ChatSession]). */
@@ -79,6 +96,8 @@ data class ChatRequest(
     val categories: List<CategoryOption>,
     val history: List<ChatTurn> = emptyList(),
     val pending: ChatProposal? = null,
+    /** La ultima consulta de este chat, si hubo una. */
+    val lastQuery: QueryScope? = null,
 )
 
 /** Puerto del modelo para el chat: cambiar de modelo o de motor es otra implementacion, no tocar el dominio. */
