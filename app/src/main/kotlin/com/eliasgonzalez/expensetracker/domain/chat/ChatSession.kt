@@ -31,8 +31,8 @@ class ChatSession(private val assistant: ChatAssistant, private val maxTurns: In
         when (reply) {
             is ChatReply.Confirm -> pending = reply.proposal
             ChatReply.Cancelled -> pending = null
-            is ChatReply.Summary -> lastQuery = QueryScope(reply.metric, reply.period, reply.from, reply.to, reply.categoryId)
-            is ChatReply.Listing -> lastQuery = QueryScope(ChatMetric.LIST, reply.period, reply.from, reply.to, reply.categoryId)
+            is ChatReply.Summary -> lastQuery = QueryScope(reply.metric, reply.period, reply.from, reply.to, reply.categoryId, reply.text)
+            is ChatReply.Listing -> lastQuery = QueryScope(ChatMetric.LIST, reply.period, reply.from, reply.to, reply.categoryId, reply.text)
             else -> Unit // una consulta o una pregunta no descarta la propuesta que el usuario tiene a la vista
         }
         return reply

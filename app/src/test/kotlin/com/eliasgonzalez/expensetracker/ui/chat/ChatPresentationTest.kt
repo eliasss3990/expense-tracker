@@ -49,6 +49,13 @@ class ChatPresentationTest {
     }
 
     @Test
+    fun `lo filtrado por texto lo dice la respuesta`() {
+        val s = ChatReply.Summary(ChatMetric.SUM, 90_000, 3, null, null, null, text = "netflix")
+        assertEquals("Gastaste ₲90.000 de \"netflix\" (3 gastos).", p.text(s))
+        assertEquals("No encontré gastos de \"farmacia\".", p.text(ChatReply.Listing(emptyList(), 0, 0, text = "farmacia")))
+    }
+
+    @Test
     fun `una lista dice de que periodo es, tambien cuando esta vacia`() {
         val from = LocalDate.of(2026, 10, 26); val to = LocalDate.of(2026, 11, 1)
         assertEquals("No encontré gastos en Comida del 26/10 al 01/11.", p.text(ChatReply.Listing(emptyList(), 0, 0, from, to, "FOOD")))

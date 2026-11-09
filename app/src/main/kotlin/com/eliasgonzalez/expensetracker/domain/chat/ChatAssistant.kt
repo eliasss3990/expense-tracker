@@ -38,7 +38,6 @@ class ChatAssistant(
         if (request.phrase.isBlank()) return ChatReply.Clarify(ClarifyReason.EMPTY_PHRASE)
         return when (val intent = interpreter.interpret(request)) {
             is ChatIntent.Query -> query(intent, request.today)
-            is ChatIntent.Describe -> resolve(intent.ref).fold({ ChatReply.Detail(it) }, { it })
             is ChatIntent.Create -> create(intent, request)
             is ChatIntent.Edit -> edit(intent, request)
             is ChatIntent.Delete -> resolve(intent.ref).fold({ ChatReply.Confirm(ChatProposal.Delete(it)) }, { it })
@@ -173,16 +172,28 @@ class ChatAssistant(
         if (from != null && to != null && from.isAfter(to)) return ChatReply.Clarify(ClarifyReason.INVALID_RANGE)
         val fromMs = from?.atStartOfDay(zone)?.toInstant()?.toEpochMilli() ?: Long.MIN_VALUE
         val toMs = to?.plusDays(1)?.atStartOfDay(zone)?.toInstant()?.toEpochMilli() ?: Long.MAX_VALUE
-        val matching = expenses.expenses.value
-            .filter { it.occurredAt in fromMs until toMs && (q.categoryId == null || it.categoryId == q.categoryId) }
-            .sortedWith(compareByDescending<Expense> { it.occurredAt }.thenByDescending { it.id })
+        val needle = NumericTokens.normalizeForMatch(q.text)
+        val limit = q.limit.coerceIn(0, MAX_LIST)
+        val filtered = expenses.expenses.value.filter {
+            it.occurredAt in fromMs until toMs && (q.categoryId == null || it.categoryId == q.categoryId) &&
+                (needle.isBlank() || NumericTokens.normalizeForMatch("${it.merchant} ${it.description}").contains(needle))
+        }
+        val sorted = when (q.sort) {
+            ChatSort.RECENT -> filtered.sortedWith(compareByDescending<Expense> { it.occurredAt }.thenByDescending { it.id })
+            ChatSort.AMOUNT -> filtered.sortedWith(compareByDescending<Expense> { it.amount }.thenByDescending { it.occurredAt })
+        }
+        val matching = if (limit > 0) sorted.take(limit) else sorted
         val total = matching.sumOf { it.amount }
+        val text = q.text.trim()
         return when (q.metric) {
-            ChatMetric.LIST -> ChatReply.Listing(matching.take(MAX_LIST), matching.size, total, from, to, q.categoryId, q.period)
-            ChatMetric.COUNT -> ChatReply.Summary(q.metric, total, matching.size, from, to, q.categoryId, q.period)
-            ChatMetric.SUM -> ChatReply.Summary(q.metric, total, matching.size, from, to, q.categoryId, q.period)
+            // LIST de UN gasto es "hablar de ese gasto": el mas reciente o el de mayor monto (o el del comercio nombrado).
+            ChatMetric.LIST ->
+                if (limit == 1 && matching.size == 1) ChatReply.Detail(matching.single())
+                else ChatReply.Listing(matching.take(MAX_LIST), matching.size, total, from, to, q.categoryId, q.period, text)
+            ChatMetric.COUNT -> ChatReply.Summary(q.metric, total, matching.size, from, to, q.categoryId, q.period, text)
+            ChatMetric.SUM -> ChatReply.Summary(q.metric, total, matching.size, from, to, q.categoryId, q.period, text)
             ChatMetric.AVERAGE ->
-                ChatReply.Summary(q.metric, if (matching.isEmpty()) 0 else total / matching.size, matching.size, from, to, q.categoryId, q.period)
+                ChatReply.Summary(q.metric, if (matching.isEmpty()) 0 else total / matching.size, matching.size, from, to, q.categoryId, q.period, text)
         }
     }
 

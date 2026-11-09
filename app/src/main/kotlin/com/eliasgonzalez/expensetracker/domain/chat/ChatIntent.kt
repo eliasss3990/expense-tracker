@@ -5,6 +5,9 @@ import java.time.LocalDate
 
 enum class ChatMetric { SUM, COUNT, LIST, AVERAGE }
 
+/** Como ordenar los gastos de una consulta: los mas recientes primero, o los de mayor monto primero. */
+enum class ChatSort { RECENT, AMOUNT }
+
 enum class EditableField { AMOUNT, MERCHANT, DESCRIPTION, CATEGORY, DATE }
 
 /** A que gasto se refiere el usuario. Lo resuelve la APP contra sus datos; el modelo nunca ve ni elige ids. */
@@ -26,8 +29,12 @@ sealed interface ChatIntent {
         val from: LocalDate?,
         val to: LocalDate?,
         val categoryId: String?,
+        /** Palabra del comercio o la descripcion para filtrar ("" = sin filtro). Tambien sirve para totales por comercio. */
+        val text: String = "",
+        val sort: ChatSort = ChatSort.RECENT,
+        /** Cuantos gastos como maximo (0 = todos). Con LIST y 1 es "hablar de UN gasto": el mas reciente o el de mayor monto. */
+        val limit: Int = 0,
     ) : ChatIntent
-    data class Describe(val ref: ExpenseRef) : ChatIntent
     /**
      * [merchant] es el LUGAR donde se pago y solo si el usuario lo nombro ("en Shell"); [description] es QUE se compro ("nafta").
      * Mezclarlos (guardar "nafta" como comercio) era el error original.
@@ -71,6 +78,7 @@ data class QueryScope(
     val from: LocalDate?,
     val to: LocalDate?,
     val categoryId: String?,
+    val text: String = "",
 )
 
 enum class TurnRole { USER, ASSISTANT }
