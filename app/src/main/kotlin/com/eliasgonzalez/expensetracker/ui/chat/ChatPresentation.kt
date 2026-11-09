@@ -61,7 +61,7 @@ internal class ChatPresentation(
     }
 
     private fun summary(r: ChatReply.Summary): String {
-        val scope = scope(r.from, r.to, r.categoryId)
+        val scope = scope(r.from, r.to, r.categoryId, r.text)
         return when (r.metric) {
             ChatMetric.COUNT -> if (r.count == 0) "No encontré gastos$scope." else "Tuviste ${r.count} ${if (r.count == 1) "gasto" else "gastos"}$scope."
             ChatMetric.AVERAGE -> if (r.count == 0) "No encontré gastos$scope." else "Tu gasto promedio$scope es ${money(r.total)} (sobre ${r.count})."
@@ -69,9 +69,10 @@ internal class ChatPresentation(
         }
     }
 
-    private fun scope(from: LocalDate?, to: LocalDate?, categoryId: String?): String {
+    private fun scope(from: LocalDate?, to: LocalDate?, categoryId: String?, text: String = ""): String {
         val parts = mutableListOf<String>()
         if (categoryId != null) parts += "en ${categoryLabel(categoryId)}"
+        if (text.isNotBlank()) parts += "de \"$text\""
         when {
             from != null && to != null && from == to -> parts += "el ${day.format(from)}"
             from != null && to != null -> parts += "del ${day.format(from)} al ${day.format(to)}"
@@ -82,10 +83,10 @@ internal class ChatPresentation(
     }
 
     private fun listing(r: ChatReply.Listing): String {
-        if (r.totalCount == 0) return "No encontré gastos."
+        if (r.totalCount == 0) return "No encontré gastos${scope(r.from, r.to, r.categoryId, r.text)}."
         val lines = r.items.joinToString("\n") { "• ${dateTime.format(Instant.ofEpochMilli(it.occurredAt))}  ${it.merchant} — ${money(it.amount)}" }
         val more = if (r.totalCount > r.items.size) "\n…y ${r.totalCount - r.items.size} más." else ""
-        return "${r.totalCount} ${if (r.totalCount == 1) "gasto" else "gastos"}, ${money(r.total)} en total:\n$lines$more"
+        return "${r.totalCount} ${if (r.totalCount == 1) "gasto" else "gastos"}${scope(r.from, r.to, r.categoryId, r.text)}, ${money(r.total)} en total:\n$lines$more"
     }
 
     private fun describe(e: Expense) =

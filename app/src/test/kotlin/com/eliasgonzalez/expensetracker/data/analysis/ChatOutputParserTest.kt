@@ -3,6 +3,7 @@ package com.eliasgonzalez.expensetracker.data.analysis
 import com.eliasgonzalez.expensetracker.domain.chat.ChatIntent
 import com.eliasgonzalez.expensetracker.domain.chat.ChatMetric
 import com.eliasgonzalez.expensetracker.domain.chat.ChatPeriod
+import com.eliasgonzalez.expensetracker.domain.chat.ChatSort
 import com.eliasgonzalez.expensetracker.domain.chat.EditableField
 import com.eliasgonzalez.expensetracker.domain.chat.ExpenseRef
 import java.time.LocalDate
@@ -34,10 +35,27 @@ class ChatOutputParserTest {
     }
 
     @Test
+    fun `hablar de UN gasto es una consulta LIST con limite 1 y un orden, con filtro por texto opcional`() {
+        fun q(extra: String) = parse("""{"action":"QUERY","metric":"LIST","period":"ALL","from":"","to":"","category":"ALL",$extra}""") as ChatIntent.Query
+        val last = q(""""text":"","sort":"RECENT","limit":1""")
+        assertEquals(ChatSort.RECENT, last.sort); assertEquals(1, last.limit); assertEquals("", last.text)
+        val biggest = q(""""text":"","sort":"AMOUNT","limit":1""")
+        assertEquals(ChatSort.AMOUNT, biggest.sort); assertEquals(1, biggest.limit)
+        assertEquals("farmacia", q(""""text":" farmacia ","sort":"RECENT","limit":1""").text)
+    }
+
+    @Test
+    fun `una salida sin los campos nuevos, o con valores raros, usa valores seguros`() {
+        val old = parse("""{"action":"QUERY","metric":"SUM","period":"ALL","from":"","to":"","category":"ALL"}""") as ChatIntent.Query
+        assertEquals(ChatSort.RECENT, old.sort); assertEquals(0, old.limit); assertEquals("", old.text)
+        fun lim(v: String) = (parse("""{"action":"QUERY","metric":"LIST","period":"ALL","from":"","to":"","category":"ALL","text":"","sort":"RECENT","limit":$v}""") as ChatIntent.Query).limit
+        assertEquals(20, lim("99")); assertEquals(0, lim("-3"))
+        assertEquals(ChatSort.RECENT, (parse("""{"action":"QUERY","metric":"LIST","period":"ALL","from":"","to":"","category":"ALL","text":"","sort":"RARO","limit":1}""") as ChatIntent.Query).sort)
+    }
+
+    @Test
     fun `referencias a un gasto`() {
         assertEquals(ChatIntent.Delete(ExpenseRef.Last), parse("""{"action":"DELETE","reference":"LAST","text":""}"""))
-        assertEquals(ChatIntent.Describe(ExpenseRef.MostExpensive), parse("""{"action":"DESCRIBE","reference":"MOST_EXPENSIVE","text":""}"""))
-        assertEquals(ChatIntent.Describe(ExpenseRef.ByText("farmacia")), parse("""{"action":"DESCRIBE","reference":"BY_FILTER","text":" farmacia "}"""))
     }
 
     @Test
@@ -102,7 +120,7 @@ class ChatOutputParserTest {
 
     @Test
     fun `lo que no se entiende es ilegible y nunca una accion`() {
-        for (bad in listOf("", "hola", "{", """{"action":"BORRAR_TODO"}""", """{"action":"QUERY","metric":"MAGIA","period":"ALL"}""", """{"action":"EDIT","reference":"LAST","field":"COLOR","new_value":"x"}""", """{"action":"DELETE","reference":"ALL"}""")) {
+        for (bad in listOf("", "hola", "{", """{"action":"BORRAR_TODO"}""", """{"action":"DESCRIBE","reference":"LAST","text":""}""", """{"action":"QUERY","metric":"MAGIA","period":"ALL"}""", """{"action":"EDIT","reference":"LAST","field":"COLOR","new_value":"x"}""", """{"action":"DELETE","reference":"ALL"}""")) {
             assertTrue("debia ser ilegible: $bad", parse(bad) is ChatIntent.Unreadable)
         }
     }

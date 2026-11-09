@@ -19,7 +19,7 @@ class ChatSchemaTest {
     fun `hay una rama por accion y solo esas`() {
         assertEquals(
             listOf(
-                "QUERY", "DESCRIBE", "CREATE", "EDIT", "DELETE", "REVISE", "CATEGORY_CREATE", "CATEGORY_RENAME", "CATEGORY_DELETE",
+                "QUERY", "CREATE", "EDIT", "DELETE", "REVISE", "CATEGORY_CREATE", "CATEGORY_RENAME", "CATEGORY_DELETE",
                 "REVISE_NAME", "CANCEL", "HELP", "SMALLTALK",
             ),
             branches().map { it.actionName() },
@@ -49,9 +49,20 @@ class ChatSchemaTest {
     }
 
     @Test
+    fun `la consulta tiene filtro por texto, orden y un limite acotado, y ya no hay una accion aparte para un gasto`() {
+        val names = branches().map { it.actionName() }
+        assertTrue("DESCRIBE" !in names)
+        val q = branches().first { it.actionName() == "QUERY" }.getJSONObject("properties")
+        assertEquals(listOf("RECENT", "AMOUNT"), q.getJSONObject("sort").getJSONArray("enum").strings())
+        assertEquals(0, q.getJSONObject("limit").getInt("minimum")); assertEquals(20, q.getJSONObject("limit").getInt("maximum"))
+        assertEquals("integer", q.getJSONObject("limit").getString("type"))
+        assertTrue(q.getJSONObject("text").getInt("maxLength") in 1..200)
+    }
+
+    @Test
     fun `no hay ninguna accion que apunte a todos los gastos`() {
         val refs = branches().filter { it.getJSONObject("properties").has("reference") }
-        assertEquals(listOf("DESCRIBE", "EDIT", "DELETE"), refs.map { it.actionName() })
+        assertEquals(listOf("EDIT", "DELETE"), refs.map { it.actionName() })
         for (r in refs) {
             val values = r.getJSONObject("properties").getJSONObject("reference").getJSONArray("enum").strings()
             assertEquals(listOf("LAST", "MOST_EXPENSIVE", "BY_FILTER"), values)

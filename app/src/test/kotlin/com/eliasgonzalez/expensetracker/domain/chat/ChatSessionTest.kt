@@ -88,6 +88,40 @@ class ChatSessionTest {
     }
 
     @Test
+    fun `el modelo recibe el alcance de la ultima consulta, que se renueva con cada consulta y sobrevive a lo demas`() {
+        val s = newSession()
+        assertNull(s.lastQuery)
+        s.say("cuanto gaste la semana pasada", ChatIntent.Query(ChatMetric.SUM, ChatPeriod.LAST_WEEK, null, null, "FOOD"))
+        assertEquals(QueryScope(ChatMetric.SUM, ChatPeriod.LAST_WEEK, LocalDate.of(2026, 10, 26), LocalDate.of(2026, 11, 1), "FOOD"), s.lastQuery)
+        s.say("hola", ChatIntent.SmallTalk("hola"))
+        s.say("y?", ChatIntent.SmallTalk("ok"))
+        assertEquals(ChatPeriod.LAST_WEEK, seen.last().lastQuery!!.period) // el modelo la recibe en el pedido siguiente
+        s.say("listalos", ChatIntent.Query(ChatMetric.LIST, ChatPeriod.THIS_MONTH, null, null, null))
+        assertEquals(ChatMetric.LIST, s.lastQuery!!.metric); assertEquals(ChatPeriod.THIS_MONTH, s.lastQuery!!.period)
+        assertEquals("el pedido de 'listalos' aun veia la consulta anterior", ChatMetric.SUM, seen.last().lastQuery!!.metric)
+    }
+
+    @Test
+    fun `el filtro por texto de la ultima consulta tambien se recuerda`() {
+        runBlocking { repo.save(com.eliasgonzalez.expensetracker.domain.model.Expense(amount = 5, merchant = "Netflix", occurredAt = 1, createdAt = 1, source = com.eliasgonzalez.expensetracker.domain.model.ExpenseSource.MANUAL)) }
+        val s = newSession()
+        s.say("cuanto gaste en netflix", ChatIntent.Query(ChatMetric.SUM, ChatPeriod.ALL, null, null, null, text = "netflix"))
+        assertEquals("netflix", s.lastQuery!!.text)
+        s.say("y los detalles?", ChatIntent.Query(ChatMetric.LIST, ChatPeriod.ALL, null, null, null, text = "netflix"))
+        assertEquals("netflix", s.lastQuery!!.text)
+        s.say("cuanto gaste hoy", ChatIntent.Query(ChatMetric.SUM, ChatPeriod.TODAY, null, null, null))
+        assertEquals("una consulta sin filtro limpia el texto", "", s.lastQuery!!.text)
+    }
+
+    @Test
+    fun `un chat nuevo no hereda la ultima consulta`() {
+        newSession().say("cuanto gaste", ChatIntent.Query(ChatMetric.SUM, ChatPeriod.ALL, null, null, null))
+        val second = newSession()
+        second.say("hola", ChatIntent.SmallTalk("hola"))
+        assertNull(seen.last().lastQuery); assertNull(second.lastQuery)
+    }
+
+    @Test
     fun `cancelar descarta la propuesta, y una consulta en medio no la descarta`() {
         val s = newSession()
         s.say("anota 5000", ChatIntent.Create(5_000, "x", null, null))

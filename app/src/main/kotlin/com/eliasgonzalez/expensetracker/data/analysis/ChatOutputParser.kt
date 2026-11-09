@@ -4,6 +4,7 @@ import com.eliasgonzalez.expensetracker.domain.chat.ChatAmount
 import com.eliasgonzalez.expensetracker.domain.chat.ChatIntent
 import com.eliasgonzalez.expensetracker.domain.chat.ChatMetric
 import com.eliasgonzalez.expensetracker.domain.chat.ChatPeriod
+import com.eliasgonzalez.expensetracker.domain.chat.ChatSort
 import com.eliasgonzalez.expensetracker.domain.chat.EditableField
 import com.eliasgonzalez.expensetracker.domain.chat.ExpenseRef
 import org.json.JSONObject
@@ -14,6 +15,7 @@ import java.time.LocalDate
  * estricto con el contenido: lo que no se entiende es [ChatIntent.Unreadable], nunca una accion adivinada.
  */
 internal object ChatOutputParser {
+    private const val MAX_LIMIT = 20
 
     fun parse(raw: String): ChatIntent {
         val json = extractObject(raw) ?: return ChatIntent.Unreadable("sin objeto JSON")
@@ -24,8 +26,10 @@ internal object ChatOutputParser {
                     period = enumOrNull<ChatPeriod>(json, "period") ?: return ChatIntent.Unreadable("period"),
                     from = date(json, "from"), to = date(json, "to"),
                     categoryId = json.optString("category").takeIf { it.isNotBlank() && it != ChatSchema.ALL },
+                    text = json.optString("text").trim(),
+                    sort = enumOrNull<ChatSort>(json, "sort") ?: ChatSort.RECENT,
+                    limit = json.optInt("limit", 0).coerceIn(0, MAX_LIMIT),
                 )
-                "DESCRIBE" -> ChatIntent.Describe(ref(json) ?: return ChatIntent.Unreadable("reference"))
                 "DELETE" -> ChatIntent.Delete(ref(json) ?: return ChatIntent.Unreadable("reference"))
                 "CREATE" -> ChatIntent.Create(
                     amount = amount(json) ?: return ChatIntent.Unreadable("amount"),

@@ -76,6 +76,27 @@ class ChatPromptsTest {
     }
 
     @Test
+    fun `el mensaje lleva el alcance de la ultima consulta, con fechas si las hay`() {
+        val scope = com.eliasgonzalez.expensetracker.domain.chat.QueryScope(
+            com.eliasgonzalez.expensetracker.domain.chat.ChatMetric.SUM, com.eliasgonzalez.expensetracker.domain.chat.ChatPeriod.LAST_WEEK,
+            LocalDate.of(2026, 10, 26), LocalDate.of(2026, 11, 1), "FOOD",
+        )
+        val u = ChatPrompts.user(req("y esos?").copy(lastQuery = scope))
+        assertTrue("Ultima consulta de este chat: metric=SUM period=LAST_WEEK category=FOOD (del 2026-10-26 al 2026-11-01)" in u)
+        assertTrue(u.indexOf("Ultima consulta") < u.indexOf("Frase actual"))
+        assertFalse("Ultima consulta" in ChatPrompts.user(req()))
+        val withText = ChatPrompts.user(req("y los detalles?").copy(lastQuery = scope.copy(text = "netflix")))
+        assertTrue("category=FOOD text=netflix (del 2026-10-26 al 2026-11-01)" in withText)
+    }
+
+    @Test
+    fun `las reglas son generales, sin casos sueltos, para referirse a lo ya consultado y para uno contra varios`() {
+        val s = ChatPrompts.system(today, cats)
+        assertTrue("reutiliza el period y la category de la \"Ultima consulta\"" in s)
+        assertTrue("hablar de UN gasto concreto" in s); assertTrue("metric LIST con limit 1" in s)
+    }
+
+    @Test
     fun `sin contexto el mensaje es solo la frase`() {
         assertEquals("Frase actual del usuario: hola", ChatPrompts.user(req()))
     }
