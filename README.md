@@ -223,20 +223,16 @@ cada PR):
 | `update/` | Comparación de versiones, derivación de enlaces de la release y clasificación de fallos del actualizador |
 | `ui/` | Funciones puras de las pantallas (filtros, mensajes, decisión de `QuickAddActivity`, textos de la pantalla de IA); sin tests de las pantallas en sí |
 
-**Por qué SQLite directo y no Room:** Room 2.8.x necesita KSP para el
-codegen de `@Entity`/`@Dao`, y al momento de armar este proyecto KSP
-todavía no publicaba soporte para Kotlin 2.4.10 (el que usa el Kotlin
-embebido de AGP 9). En vez de bajar la versión de Kotlin del proyecto
-entero por una sola librería, `data/local/` (`DbHelper` + `DbSchema`) implementa la
-persistencia a mano detrás de las mismas interfaces de dominio. Migrar a
-Room después no debería tocar nada fuera de `data/local/`.
-
-> **Actualización (2026-11-12):** ese bloqueo ya no existe. KSP `2.3.13`
-> compila con Kotlin 2.4.10 y AGP 9.3.2 (lo usa hoy `androidx.appfunctions`,
-> ver `appfunctions/`; verificado en el CI del PR #69). La decisión de SQLite
-> directo se mantiene (funciona y está probada contra SQLite real), pero ya no
-> depende de esta limitación: Room podría reevaluarse por sus propios méritos.
-> No se probó Room con esta versión de KSP, solo AppFunctions.
+**Por qué SQLite directo y no Room:** la persistencia está hecha a mano
+(`data/local/`: `DbHelper` + `DbSchema`) detrás de las interfaces de
+dominio. Se eligió así porque Room 2.8.x necesita KSP para el codegen de
+`@Entity`/`@Dao` y, cuando se armó la persistencia, ninguna versión de KSP
+compilaba contra Kotlin 2.4.10 (el del Kotlin embebido de AGP 9). Ese
+impedimento ya no existe: KSP `2.3.13` compila con este Kotlin y AGP 9.3.2
+(lo usa hoy `androidx.appfunctions`, ver `appfunctions/`). Se mantiene
+SQLite directo porque ya está implementado y sus migraciones se prueban
+contra SQLite real; migrar a Room no debería tocar nada fuera de
+`data/local/`. Room no se probó con esta versión de KSP.
 
 **Por qué DI manual y no Hilt:** el grafo de dependencias es chico
 (un puñado de repositorios y casos de uso) — `di/AppContainer.kt` arma
