@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AppFunctionAppMetadata xmlns:appfn="http://schemas.android.com/apk/androidx.appfunctions"
+    appfn:instructions="Expense Tracker registra los gastos personales del usuario (en guaranies, PYG).
+Operational Patterns:
+  - Use 'getSpendingTotal' para responder cuanto gasto el usuario en un periodo (hoy, ayer, esta semana, este mes, etc.).
+Constraints:
+  - Solo lectura: no puede crear, editar ni borrar gastos." />
