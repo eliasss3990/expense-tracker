@@ -219,6 +219,7 @@ cada PR):
 | `data/local/` | **Migraciones de la base contra una SQLite real**, el seed congelado y la cola y auditoría del análisis |
 | `data/analysis/` | Prompts, esquema JSON de la salida, lectura tolerante de lo que devuelve el modelo, codec de auditoría y el manejo del motor al cancelar |
 | `notification/` | Parsers (Ueno, Banco Familiar, genérico), su prioridad en `ParserEngine` y el recurso del ícono de notificación |
+| `appfunctions/` | **Prueba** de AppFunctions (Android 16+): `getSpendingTotal(period)`, función de solo lectura para que un asistente como Gemini consulte el total gastado. Aún sin confirmar que Gemini la ejecute |
 | `update/` | Comparación de versiones, derivación de enlaces de la release y clasificación de fallos del actualizador |
 | `ui/` | Funciones puras de las pantallas (filtros, mensajes, decisión de `QuickAddActivity`, textos de la pantalla de IA); sin tests de las pantallas en sí |
 
@@ -229,6 +230,13 @@ embebido de AGP 9). En vez de bajar la versión de Kotlin del proyecto
 entero por una sola librería, `data/local/` (`DbHelper` + `DbSchema`) implementa la
 persistencia a mano detrás de las mismas interfaces de dominio. Migrar a
 Room después no debería tocar nada fuera de `data/local/`.
+
+> **Actualización (2026-11-12):** ese bloqueo ya no existe. KSP `2.3.13`
+> compila con Kotlin 2.4.10 y AGP 9.3.2 (lo usa hoy `androidx.appfunctions`,
+> ver `appfunctions/`; verificado en el CI del PR #69). La decisión de SQLite
+> directo se mantiene (funciona y está probada contra SQLite real), pero ya no
+> depende de esta limitación: Room podría reevaluarse por sus propios méritos.
+> No se probó Room con esta versión de KSP, solo AppFunctions.
 
 **Por qué DI manual y no Hilt:** el grafo de dependencias es chico
 (un puñado de repositorios y casos de uso) — `di/AppContainer.kt` arma
