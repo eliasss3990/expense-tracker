@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
 // Firma de release leída de variables de entorno (seteadas por el
@@ -75,6 +76,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // Runtime del modelo local (solo lo conoce data/analysis/LiteRtTransactionInterpreter). Version fijada, no latest.release.
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.1")
+    // AppFunctions (prueba): expone funciones de la app a asistentes como Gemini. Requiere Android 16+ (API 36) en runtime.
+    implementation("androidx.appfunctions:appfunctions:1.0.0-rc01")
+    ksp("androidx.appfunctions:appfunctions-compiler:1.0.0-rc01")
     implementation(platform("androidx.compose:compose-bom:2026.08.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
