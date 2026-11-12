@@ -11,8 +11,6 @@ import com.eliasgonzalez.expensetracker.domain.chat.ChatPeriod
 import com.eliasgonzalez.expensetracker.domain.usecase.sumSpending
 import java.time.LocalDate
 import java.time.ZoneId
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /** Resultado de [BaseExpenseAppFunctionService.getSpendingTotal]. */
 @AppFunctionSerializable(isDescribedByKDoc = true)
@@ -23,16 +21,17 @@ data class SpendingSummary(
     val expenseCount: Int,
     /** Codigo de la moneda del total, por ejemplo "PYG". */
     val currency: String,
-    /** Primer dia incluido (formato AAAA-MM-DD), o vacio si el periodo no tiene limite inferior. */
-    val fromDate: String,
-    /** Ultimo dia incluido (formato AAAA-MM-DD), o vacio si el periodo no tiene limite superior. */
-    val toDate: String,
+    /** Primer dia incluido (formato AAAA-MM-DD), o null si el periodo no tiene limite inferior. */
+    val fromDate: String?,
+    /** Ultimo dia incluido (formato AAAA-MM-DD), o null si el periodo no tiene limite superior. */
+    val toDate: String?,
 )
 
 /**
  * PRUEBA de AppFunctions: una unica funcion de solo lectura para comprobar que un asistente (Gemini) puede llamar a la
- * app. Reutiliza los mismos datos y el calculo de periodos del chat de IA (ADR 0015): el asistente solo interpreta,
- * la app calcula. KSP genera el servicio concreto `ExpenseAppFunctionService` a partir de esta clase.
+ * app. Reutiliza los datos y el calculo de PERIODOS del chat de IA (ADR 0015): el asistente solo interpreta, la app
+ * calcula las fechas. La suma es propia y solo cuenta gastos en PYG (el chat no filtra por moneda; hoy la app solo
+ * registra PYG, asi que coinciden). KSP genera el servicio concreto `ExpenseAppFunctionService` a partir de esta clase.
  */
 @RequiresApi(36)
 @AppFunctionServiceEntryPoint(
@@ -50,8 +49,10 @@ abstract class BaseExpenseAppFunctionService : AppFunctionService() {
      * @return El total gastado, la cantidad de gastos y el rango de fechas usado.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
-    suspend fun getSpendingTotal(period: String): SpendingSummary = withContext(Dispatchers.IO) {
-        val parsed = ChatPeriod.entries.firstOrNull { it != ChatPeriod.CUSTOM && it.name.equals(period.trim(), ignoreCase = true) }
+    suspend fun getSpendingTotal(period: String): SpendingSummary {
+        // Tolera "last 7 days", "this-week" o minusculas: lo que el asistente mande se normaliza al nombre del enum.
+        val key = period.trim().uppercase().replace(Regex("[\\s-]+"), "_")
+        val parsed = ChatPeriod.entries.firstOrNull { it != ChatPeriod.CUSTOM && it.name == key }
             ?: throw AppFunctionInvalidArgumentException(
                 "Periodo no valido: '$period'. Usa TODAY, YESTERDAY, THIS_WEEK, LAST_WEEK, THIS_MONTH, LAST_MONTH, " +
                     "LAST_7_DAYS, LAST_30_DAYS o ALL.",
@@ -64,12 +65,12 @@ abstract class BaseExpenseAppFunctionService : AppFunctionService() {
         val zone = ZoneId.systemDefault()
         val (from, to) = parsed.resolve(LocalDate.now(zone), customFrom = null, customTo = null)
         val result = sumSpending(container.observeExpenses().value, from, to, zone)
-        SpendingSummary(
+        return SpendingSummary(
             total = result.total,
             expenseCount = result.count,
             currency = result.currency,
-            fromDate = from?.toString().orEmpty(),
-            toDate = to?.toString().orEmpty(),
+            fromDate = from?.toString(),
+            toDate = to?.toString(),
         )
     }
 }
